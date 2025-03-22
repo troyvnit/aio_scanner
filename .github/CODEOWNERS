@@ -1,0 +1,14 @@
+# These owners will be the default owners for everything in the repo.
+# Unless a later match takes precedence, they will be requested for
+# review when someone opens a pull request.
+* @troyvnit
+
+# iOS implementation specific files
+/ios/ @troyvnit
+
+# Android implementation specific files
+/android/ @troyvnit
+
+# Dart/Flutter code
+/lib/ @troyvnit
+/example/ @troyvnit 
