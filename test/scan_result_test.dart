@@ -5,101 +5,163 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('ScanResult', () {
-    test('constructor sets all properties correctly', () {
-      final scannedImages = [
-        File('/temp/image1.jpg'),
-        File('/temp/image2.jpg'),
-      ];
+    test('creates valid ScanResult from constructor', () {
+      // Use mock paths instead of actual file system
+      final mockImagePaths = ['/mock/image1.jpg', '/mock/image2.jpg'];
       
       final result = ScanResult(
         isSuccessful: true,
-        scannedImages: scannedImages,
-        extractedText: 'Sample text',
-        errorMessage: 'Some error',
+        scannedImages: mockImagePaths.map((path) => File(path)).toList(),
+        extractedText: 'Test extracted text',
       );
       
       expect(result.isSuccessful, true);
-      expect(result.scannedImages, equals(scannedImages));
-      expect(result.extractedText, 'Sample text');
-      expect(result.errorMessage, 'Some error');
+      expect(result.scannedImages.length, 2);
+      expect(result.scannedImages[0].path, '/mock/image1.jpg');
+      expect(result.scannedImages[1].path, '/mock/image2.jpg');
+      expect(result.extractedText, 'Test extracted text');
+      expect(result.errorMessage, null);
     });
     
-    test('fromMap creates instance with proper values', () {
-      final Map<dynamic, dynamic> map = {
+    test('creates valid ScanResult with error message', () {
+      final result = ScanResult(
+        isSuccessful: false,
+        scannedImages: [],
+        extractedText: null,
+        errorMessage: 'Test error message',
+      );
+      
+      expect(result.isSuccessful, false);
+      expect(result.scannedImages, isEmpty);
+      expect(result.extractedText, null);
+      expect(result.errorMessage, 'Test error message');
+    });
+    
+    test('fromMap creates valid ScanResult from map', () {
+      final mockImagePaths = ['/mock/image1.jpg', '/mock/image2.jpg'];
+      
+      final Map<String, dynamic> map = {
         'isSuccessful': true,
-        'imagePaths': ['/test/path1.jpg', '/test/path2.jpg'],
-        'extractedText': 'Extracted content',
-        'errorMessage': null,
+        'imagePaths': mockImagePaths,
+        'extractedText': 'Test extracted text',
       };
       
       final result = ScanResult.fromMap(map);
       
       expect(result.isSuccessful, true);
       expect(result.scannedImages.length, 2);
-      expect(result.scannedImages[0].path, '/test/path1.jpg');
-      expect(result.scannedImages[1].path, '/test/path2.jpg');
-      expect(result.extractedText, 'Extracted content');
+      expect(result.scannedImages[0].path, '/mock/image1.jpg');
+      expect(result.scannedImages[1].path, '/mock/image2.jpg');
+      expect(result.extractedText, 'Test extracted text');
       expect(result.errorMessage, null);
     });
     
     test('fromMap handles empty image paths', () {
-      final Map<dynamic, dynamic> map = {
+      final Map<String, dynamic> map = {
         'isSuccessful': true,
         'imagePaths': [],
-        'extractedText': 'Content with no images',
-        'errorMessage': null,
+        'extractedText': 'Test extracted text',
       };
       
       final result = ScanResult.fromMap(map);
       
       expect(result.isSuccessful, true);
       expect(result.scannedImages, isEmpty);
-      expect(result.extractedText, 'Content with no images');
-    });
-    
-    test('fromMap handles null fields gracefully', () {
-      final Map<dynamic, dynamic> map = {
-        'isSuccessful': null,
-        'imagePaths': null,
-        'extractedText': null,
-        'errorMessage': null,
-      };
-      
-      final result = ScanResult.fromMap(map);
-      
-      expect(result.isSuccessful, false); // Default when null
-      expect(result.scannedImages, isEmpty);
-      expect(result.extractedText, null);
+      expect(result.extractedText, 'Test extracted text');
       expect(result.errorMessage, null);
     });
     
-    test('fromMap works with minimal map', () {
-      final Map<dynamic, dynamic> map = {
+    test('fromMap handles null image paths', () {
+      final Map<String, dynamic> map = {
         'isSuccessful': true,
+        'imagePaths': null,
+        'extractedText': 'Test extracted text',
       };
       
       final result = ScanResult.fromMap(map);
       
       expect(result.isSuccessful, true);
       expect(result.scannedImages, isEmpty);
+      expect(result.extractedText, 'Test extracted text');
+      expect(result.errorMessage, null);
+    });
+    
+    test('fromMap handles null extracted text', () {
+      final mockImagePaths = ['/mock/image1.jpg'];
+      
+      final Map<String, dynamic> map = {
+        'isSuccessful': true,
+        'imagePaths': mockImagePaths,
+        'extractedText': null,
+      };
+      
+      final result = ScanResult.fromMap(map);
+      
+      expect(result.isSuccessful, true);
+      expect(result.scannedImages.length, 1);
+      expect(result.scannedImages[0].path, '/mock/image1.jpg');
       expect(result.extractedText, null);
       expect(result.errorMessage, null);
     });
     
-    test('fromMap preserves false success status', () {
-      final Map<dynamic, dynamic> map = {
+    test('fromMap handles error message', () {
+      final Map<String, dynamic> map = {
         'isSuccessful': false,
-        'imagePaths': ['/test/path1.jpg'],
-        'extractedText': 'Some text',
-        'errorMessage': 'Operation failed',
+        'imagePaths': [],
+        'extractedText': null,
+        'errorMessage': 'Test error message',
       };
       
       final result = ScanResult.fromMap(map);
       
       expect(result.isSuccessful, false);
+      expect(result.scannedImages, isEmpty);
+      expect(result.extractedText, null);
+      expect(result.errorMessage, 'Test error message');
+    });
+    
+    test('fromMap handles missing fields', () {
+      final Map<String, dynamic> map = {
+        'isSuccessful': true,
+        // Missing imagePaths
+        // Missing extractedText
+        // Missing errorMessage
+      };
+      
+      final result = ScanResult.fromMap(map);
+      
+      expect(result.isSuccessful, true);
+      expect(result.scannedImages, isEmpty);
+      expect(result.extractedText, null);
+      expect(result.errorMessage, null);
+    });
+    
+    test('fromMap handles null success status', () {
+      final Map<String, dynamic> map = {
+        'isSuccessful': null,
+        'imagePaths': ['/mock/image1.jpg'],
+        'extractedText': 'Test text',
+      };
+      
+      final result = ScanResult.fromMap(map);
+      
+      // Should default to false when isSuccessful is null
+      expect(result.isSuccessful, false);
       expect(result.scannedImages.length, 1);
-      expect(result.extractedText, 'Some text');
-      expect(result.errorMessage, 'Operation failed');
+      expect(result.extractedText, 'Test text');
+      expect(result.errorMessage, null);
+    });
+    
+    test('fromMap handles empty map', () {
+      final Map<String, dynamic> map = {};
+      
+      final result = ScanResult.fromMap(map);
+      
+      // Should create a default unsuccessful result
+      expect(result.isSuccessful, false);
+      expect(result.scannedImages, isEmpty);
+      expect(result.extractedText, null);
+      expect(result.errorMessage, null);
     });
   });
 } 
