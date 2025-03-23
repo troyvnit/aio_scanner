@@ -21,8 +21,10 @@ A powerful cross-platform document and barcode scanning package for Flutter that
 ## Features
 
 - 📝 **Document Scanning**: Automatic edge detection and perspective correction
-- 🔍 **Barcode Scanning**: Support for QR codes, Code 128, EAN, UPC, and more
+- 🔍 **Barcode Scanning**: Real-time detection of QR codes, Code 128, EAN, UPC, and more
 - 📱 **Cross-platform Support**: Works seamlessly on iOS and Android
+- 🔄 **Auto-confirmation**: Automatically confirms detected barcodes for a seamless experience
+- 💡 **Flash Control**: Integrated flash/torch control with clean UI
 - 🔍 **Text Recognition (OCR)**: Extract text from scanned documents
 - 📐 **Image Enhancement**: Automatic lighting and color correction
 - 📚 **Multi-page Support**: Scan multiple pages in one session
@@ -54,7 +56,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  aio_scanner: ^0.0.1
+  aio_scanner: ^1.0.0
 ```
 
 ### iOS Setup
