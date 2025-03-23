@@ -19,7 +19,7 @@ import Vision
  * The implementation leverages Apple's VisionKit framework for the scanning UI and the Vision
  * framework for text recognition, providing a seamless native experience within Flutter apps.
  */
-@objc public class AioScannerPlugin: NSObject, FlutterPlugin, VNDocumentCameraViewControllerDelegate, DataScannerViewControllerDelegate {
+@objc public class AioScannerPlugin: NSObject, FlutterPlugin, VNDocumentCameraViewControllerDelegate, DataScannerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
     /// The Flutter result callback to return scanning results
     /// This is retained until the scanning process completes or fails
     private var documentScanResult: FlutterResult?
@@ -118,6 +118,11 @@ import Vision
             if #available(iOS 16.0, *) {
                 guard DataScannerViewController.isSupported && DataScannerViewController.isAvailable else {
                     result(["isSuccessful": false, "errorMessage": "Barcode scanning is not supported on this device"])
+                    return
+                }
+
+                guard let args = call.arguments as? [String: Any] else {
+                    result(["isSuccessful": false, "errorMessage": "Invalid arguments"])
                     return
                 }
                 
@@ -262,7 +267,7 @@ import Vision
         let dataScannerViewController = DataScannerViewController(
             recognizedDataTypes: dataTypes,
             qualityLevel: .balanced,
-            recognizesMultipleItems: true,
+            isHighFrameRateTrackingEnabled: true,
             isPinchToZoomEnabled: true,
             isGuidanceEnabled: true,
             isHighlightingEnabled: true
@@ -292,6 +297,8 @@ import Vision
         // Present the scanner
         rootViewController.present(dataScannerViewController, animated: true) {
             do {
+                // Set the presentation controller delegate to handle interactive dismissal
+                dataScannerViewController.presentationController?.delegate = self
                 try dataScannerViewController.startScanning()
             } catch {
                 self.dismissBarcodeScanner(withResult: ["isSuccessful": false, "errorMessage": "Failed to start scanning: \(error.localizedDescription)"])
@@ -614,6 +621,26 @@ import Vision
             print("Failed to perform text recognition: \(error)")
             #endif
             completion(nil)
+        }
+    }
+    
+    // MARK: - UIAdaptivePresentationControllerDelegate
+    
+    /**
+     * Called when the user swipes down to dismiss the presented view controller.
+     * 
+     * This delegate method is invoked when an interactive dismissal is about to happen,
+     * such as when the user swipes down on a modal presentation. We use this to properly
+     * handle the dismissal and return a "cancelled" result to Flutter.
+     *
+     * - Parameter presentationController: The presentation controller being dismissed.
+     */
+    public func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
+        // Only handle this for barcode scanner
+        if #available(iOS 16.0, *),
+           presentationController.presentedViewController === self.dataScannerViewController {
+            // The user is swiping down to dismiss - handle it the same as a cancellation
+            dismissBarcodeScanner(withResult: ["isSuccessful": false, "barcodeValues": [], "barcodeFormats": [], "errorMessage": "User cancelled scanning"])
         }
     }
 } 
