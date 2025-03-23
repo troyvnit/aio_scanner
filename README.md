@@ -32,10 +32,13 @@ A powerful cross-platform document and barcode scanning package for Flutter that
 
 ## Demo
 
-![Document Scanner Demo](https://github.com/troyvnit/aio_scanner/raw/main/demo/document_scanner.gif)
-![Barcode Scanner Demo](https://github.com/troyvnit/aio_scanner/raw/main/demo/barcode_scanner.gif)
+### iOS
 
-_Note: Please replace the above placeholder URLs with your actual demo GIFs after uploading them to your repository._
+https://github.com/user-attachments/assets/dee1c729-fbf7-43d1-870b-e31346d69acc
+
+### Android
+
+https://github.com/user-attachments/assets/fb36e9d8-b9c6-47d4-adf2-2d5797fb6380
 
 ## Requirements
 
@@ -240,11 +243,11 @@ The AIO Scanner plugin provides several configuration options:
 
 ### Barcode Scanning Options
 
-| Parameter           | Type           | Description                                |
-| ------------------- | -------------- | ------------------------------------------ |
-| `outputDirectory`   | `String`       | Directory where screenshot will be saved   |
-| `recognizedFormats` | `List<String>` | List of barcode formats to recognize       |
-| `scanningMessage`   | `String`       | Message displayed during scanning          |
+| Parameter           | Type           | Description                              |
+| ------------------- | -------------- | ---------------------------------------- |
+| `outputDirectory`   | `String`       | Directory where screenshot will be saved |
+| `recognizedFormats` | `List<String>` | List of barcode formats to recognize     |
+| `scanningMessage`   | `String`       | Message displayed during scanning        |
 
 #### Supported Barcode Formats
 
