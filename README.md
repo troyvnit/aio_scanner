@@ -245,11 +245,10 @@ The AIO Scanner plugin provides several configuration options:
 
 ### Barcode Scanning Options
 
-| Parameter           | Type           | Description                              |
-| ------------------- | -------------- | ---------------------------------------- |
-| `outputDirectory`   | `String`       | Directory where screenshot will be saved |
-| `recognizedFormats` | `List<String>` | List of barcode formats to recognize     |
-| `scanningMessage`   | `String`       | Message displayed during scanning        |
+| Parameter           | Type           | Description                          |
+| ------------------- | -------------- | ------------------------------------ |
+| `recognizedFormats` | `List<String>` | List of barcode formats to recognize |
+| `scanningMessage`   | `String`       | Message displayed during scanning    |
 
 #### Supported Barcode Formats
 
