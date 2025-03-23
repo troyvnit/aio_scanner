@@ -32,10 +32,11 @@ A powerful cross-platform document scanning package for Flutter that leverages n
 
 ## Demo
 
-![Document Scanner Demo](https://github.com/troyvnit/aio_scanner/raw/main/demo/document_scanner.gif)
-![Business Card Scanner Demo](https://github.com/troyvnit/aio_scanner/raw/main/demo/business_card_scanner.gif)
+### iOS
+https://github.com/user-attachments/assets/dee1c729-fbf7-43d1-870b-e31346d69acc
 
-_Note: Please replace the above placeholder URLs with your actual demo GIFs after uploading them to your repository._
+### Android
+https://github.com/user-attachments/assets/fb36e9d8-b9c6-47d4-adf2-2d5797fb6380
 
 ## Requirements
 
