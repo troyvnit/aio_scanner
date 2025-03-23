@@ -1,5 +1,5 @@
 /// AIO Scanner provides a cross-platform document scanning solution.
-/// 
+///
 /// This package leverages VisionKit on iOS and ML Kit on Android to provide
 /// document scanning capabilities in Flutter applications.
 library aio_scanner;
@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 /// Result of a document or business card scanning operation
 ///
@@ -106,7 +107,8 @@ class AioScanner {
   /// ```
   static Future<bool> isDocumentScanningSupported() async {
     try {
-      return await _channel.invokeMethod('isDocumentScanningSupported') ?? false;
+      return await _channel.invokeMethod('isDocumentScanningSupported') ??
+          false;
     } catch (e) {
       return false;
     }
@@ -132,7 +134,7 @@ class AioScanner {
   /// Example usage:
   /// ```dart
   /// final result = await AioScanner.startDocumentScanning(
-  ///   outputDirectory: '${documentsDir.path}/scans',
+  ///   outputDirectory: 'scanned_documents',
   ///   maxNumPages: 3,
   /// );
   ///
@@ -146,21 +148,31 @@ class AioScanner {
   /// }
   /// ```
   static Future<ScanResult?> startDocumentScanning({
-    required String outputDirectory,
+    String outputDirectory = 'scanned_documents',
     int maxNumPages = 5,
     String initialMessage = 'Position document in frame',
     String scanningMessage = 'Hold still...',
     bool allowGalleryImport = true,
   }) async {
     try {
-      // Create output directory if it doesn't exist
-      final directory = Directory(outputDirectory);
+      final documentsDirectory = await getApplicationDocumentsDirectory();
+
+      // Make sure the outputDirectory doesn't start with a slash
+      String sanitizedPath = outputDirectory;
+      if (sanitizedPath.startsWith('/')) {
+        sanitizedPath = sanitizedPath.substring(1);
+      }
+
+      final outputPath = '${documentsDirectory.path}/$sanitizedPath';
+      final directory = Directory(outputPath);
+
+      // Create directory if it doesn't exist
       if (!await directory.exists()) {
         await directory.create(recursive: true);
       }
 
       final Map<String, dynamic> args = {
-        'outputDirectory': outputDirectory,
+        'outputDirectory': directory.path,
         'maxNumPages': maxNumPages,
         'initialMessage': initialMessage,
         'scanningMessage': scanningMessage,
@@ -168,9 +180,9 @@ class AioScanner {
       };
 
       final result = await _channel.invokeMethod('startDocumentScanning', args);
-      
+
       if (result == null) return null;
-      
+
       return ScanResult.fromMap(Map<dynamic, dynamic>.from(result));
     } catch (e) {
       return ScanResult(
@@ -200,7 +212,7 @@ class AioScanner {
   /// Example usage:
   /// ```dart
   /// final result = await AioScanner.startBusinessCardScanning(
-  ///   outputDirectory: '${documentsDir.path}/business_cards',
+  ///   outputDirectory: 'scanned_business_cards',
   /// );
   ///
   /// if (result?.isSuccessful == true) {
@@ -210,27 +222,40 @@ class AioScanner {
   /// }
   /// ```
   static Future<ScanResult?> startBusinessCardScanning({
-    required String outputDirectory,
+    String outputDirectory = 'scanned_business_cards',
     String initialMessage = 'Position card in frame',
     String scanningMessage = 'Capturing...',
   }) async {
     try {
-      // Create output directory if it doesn't exist
-      final directory = Directory(outputDirectory);
+      final documentsDirectory = await getApplicationDocumentsDirectory();
+
+      // Make sure the outputDirectory doesn't start with a slash
+      String sanitizedPath = outputDirectory;
+      if (sanitizedPath.startsWith('/')) {
+        sanitizedPath = sanitizedPath.substring(1);
+      }
+
+      final outputPath = '${documentsDirectory.path}/$sanitizedPath';
+      final directory = Directory(outputPath);
+
+      // Create directory if it doesn't exist
       if (!await directory.exists()) {
         await directory.create(recursive: true);
       }
 
       final Map<String, dynamic> args = {
-        'outputDirectory': outputDirectory,
+        'outputDirectory': directory.path,
         'initialMessage': initialMessage,
         'scanningMessage': scanningMessage,
       };
 
-      final result = await _channel.invokeMethod('startBusinessCardScanning', args);
-      
+      final result = await _channel.invokeMethod(
+        'startBusinessCardScanning',
+        args,
+      );
+
       if (result == null) return null;
-      
+
       return ScanResult.fromMap(Map<dynamic, dynamic>.from(result));
     } catch (e) {
       return ScanResult(

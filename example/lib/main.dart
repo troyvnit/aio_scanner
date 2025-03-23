@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:aio_scanner/aio_scanner.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
@@ -49,10 +48,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   /// Collection of scanned document images
   final List<File> _scannedImages = [];
-  
+
   /// Text extracted from scanned documents using OCR
   String _extractedText = '';
-  
+
   /// Loading state to manage UI during scanning operations
   bool _isLoading = false;
 
@@ -77,7 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final deviceInfo = DeviceInfoPlugin();
       final androidInfo = await deviceInfo.androidInfo;
       final sdkVersion = androidInfo.version.sdkInt;
-      
+
       final bool isAndroid13OrHigher = sdkVersion >= 33; // SDK 33 = Android 13
       final bool isAndroid10OrHigher = sdkVersion >= 29; // SDK 29 = Android 10
 
@@ -99,10 +98,12 @@ class _HomeScreenState extends State<HomeScreen> {
       final statuses = await permissionsToRequest.request();
 
       // Check if any permission was denied
-      if (statuses.values.any((status) => status.isDenied || status.isPermanentlyDenied)) {
+      if (statuses.values.any(
+        (status) => status.isDenied || status.isPermanentlyDenied,
+      )) {
         _showErrorSnackBar(
           'Camera and storage permissions are required for document scanning. '
-          'Please enable them in app settings.'
+          'Please enable them in app settings.',
         );
       }
     }
@@ -116,99 +117,101 @@ class _HomeScreenState extends State<HomeScreen> {
         centerTitle: true,
         elevation: 0,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Scan buttons
-                  const SizedBox(height: 24),
-                  _buildFeatureCard(
-                    title: 'Document Scanner',
-                    description: 'Scan documents with automatic edge detection',
-                    icon: Icons.document_scanner,
-                    onTap: _startDocumentScan,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildFeatureCard(
-                    title: 'Business Card Scanner',
-                    description: 'Scan and extract text from business cards',
-                    icon: Icons.contact_mail,
-                    onTap: _startBusinessCardScan,
-                  ),
-                  
-                  // Results section
-                  if (_scannedImages.isNotEmpty) ...[
-                    const SizedBox(height: 32),
-                    const Text(
-                      'Scanned Images',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Scan buttons
+                    const SizedBox(height: 24),
+                    _buildFeatureCard(
+                      title: 'Document Scanner',
+                      description:
+                          'Scan documents with automatic edge detection',
+                      icon: Icons.document_scanner,
+                      onTap: _startDocumentScan,
                     ),
                     const SizedBox(height: 16),
-                    SizedBox(
-                      height: 200,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _scannedImages.length,
-                        itemBuilder: (context, index) {
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 12.0),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                height: 200,
-                                width: 150,
-                                color: Colors.grey.shade300,
-                                child: Image.file(
-                                  _scannedImages[index],
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Center(
-                                      child: Icon(
-                                        Icons.image,
-                                        size: 80,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    );
-                                  },
+                    _buildFeatureCard(
+                      title: 'Business Card Scanner',
+                      description: 'Scan and extract text from business cards',
+                      icon: Icons.contact_mail,
+                      onTap: _startBusinessCardScan,
+                    ),
+
+                    // Results section
+                    if (_scannedImages.isNotEmpty) ...[
+                      const SizedBox(height: 32),
+                      const Text(
+                        'Scanned Images',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        height: 200,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _scannedImages.length,
+                          itemBuilder: (context, index) {
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 12.0),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  height: 200,
+                                  width: 150,
+                                  color: Colors.grey.shade300,
+                                  child: Image.file(
+                                    _scannedImages[index],
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Center(
+                                        child: Icon(
+                                          Icons.image,
+                                          size: 80,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      );
+                                    },
+                                  ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
-                    ),
+                    ],
+
+                    // Extracted text section
+                    if (_extractedText.isNotEmpty) ...[
+                      const SizedBox(height: 32),
+                      const Text(
+                        'Extracted Text',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Text(_extractedText),
+                      ),
+                    ],
                   ],
-                  
-                  // Extracted text section
-                  if (_extractedText.isNotEmpty) ...[
-                    const SizedBox(height: 32),
-                    const Text(
-                      'Extracted Text',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade300),
-                      ),
-                      child: Text(_extractedText),
-                    ),
-                  ],
-                ],
+                ),
               ),
-            ),
     );
   }
 
@@ -230,9 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     return Card(
       elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
@@ -246,11 +247,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 padding: const EdgeInsets.all(16),
-                child: Icon(
-                  icon,
-                  color: Colors.deepPurple,
-                  size: 32,
-                ),
+                child: Icon(icon, color: Colors.deepPurple, size: 32),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -299,26 +296,19 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _isLoading = true;
       });
-      
-      final directory = await getApplicationDocumentsDirectory();
-      final String outputPath = '${directory.path}/scanned_documents';
-      
-      // Create directory if it doesn't exist
-      await Directory(outputPath).create(recursive: true);
-      
+
       // Call the plugin
       ScanResult? result = await AioScanner.startDocumentScanning(
-        outputDirectory: outputPath,
         maxNumPages: 5,
         initialMessage: 'Position document in frame',
         scanningMessage: 'Hold still...',
         allowGalleryImport: true,
       );
-      
+
       setState(() {
         _isLoading = false;
       });
-      
+
       if (result != null && result.isSuccessful) {
         // Process scan result
         setState(() {
@@ -327,7 +317,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _extractedText = result.extractedText ?? '';
         });
       } else {
-        _showErrorSnackBar('Scanning cancelled or failed: ${result?.errorMessage ?? "Unknown error"}');
+        _showErrorSnackBar(
+          'Scanning cancelled or failed: ${result?.errorMessage ?? "Unknown error"}',
+        );
       }
     } catch (e) {
       setState(() {
@@ -353,24 +345,17 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _isLoading = true;
       });
-      
-      final directory = await getApplicationDocumentsDirectory();
-      final String outputPath = '${directory.path}/scanned_cards';
-      
-      // Create directory if it doesn't exist
-      await Directory(outputPath).create(recursive: true);
-      
+
       // Call the plugin
       ScanResult? result = await AioScanner.startBusinessCardScanning(
-        outputDirectory: outputPath,
         initialMessage: 'Position card in frame',
         scanningMessage: 'Capturing...',
       );
-      
+
       setState(() {
         _isLoading = false;
       });
-      
+
       if (result != null && result.isSuccessful) {
         // Process scan result
         setState(() {
@@ -379,7 +364,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _extractedText = result.extractedText ?? '';
         });
       } else {
-        _showErrorSnackBar('Scanning cancelled or failed: ${result?.errorMessage ?? "Unknown error"}');
+        _showErrorSnackBar(
+          'Scanning cancelled or failed: ${result?.errorMessage ?? "Unknown error"}',
+        );
       }
     } catch (e) {
       setState(() {

@@ -39,13 +39,7 @@ dependencies:
   aio_scanner:
     path: ../
 
-  # For file handling
-  path_provider: ^2.1.5
-
-  # For permission handling
   permission_handler: ^11.4.0
-
-  # For device information (Android SDK version detection)
   device_info_plus: ^9.1.2
 
 dev_dependencies:

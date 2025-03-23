@@ -12,7 +12,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # For plugin platform interface - required for all Flutter plugins
+
+  path_provider: ^2.1.5
   plugin_platform_interface: ^2.1.8
 
 dev_dependencies:

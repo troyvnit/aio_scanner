@@ -93,16 +93,11 @@ For Android 12 and below, add:
 
 ```dart
 import 'package:aio_scanner/aio_scanner.dart';
-import 'package:path_provider/path_provider.dart';
 
 Future<void> scanDocument() async {
   try {
-    final directory = await getApplicationDocumentsDirectory();
-    final outputPath = '${directory.path}/scanned_documents';
-
     // Start document scanning
     ScanResult? result = await AioScanner.startDocumentScanning(
-      outputDirectory: outputPath,
       maxNumPages: 5,
       initialMessage: 'Position document in frame',
       scanningMessage: 'Hold still...',
@@ -130,16 +125,11 @@ Future<void> scanDocument() async {
 
 ```dart
 import 'package:aio_scanner/aio_scanner.dart';
-import 'package:path_provider/path_provider.dart';
 
 Future<void> scanBusinessCard() async {
   try {
-    final directory = await getApplicationDocumentsDirectory();
-    final outputPath = '${directory.path}/scanned_cards';
-
     // Start business card scanning
     ScanResult? result = await AioScanner.startBusinessCardScanning(
-      outputDirectory: outputPath,
       initialMessage: 'Position card in frame',
       scanningMessage: 'Capturing...',
     );
