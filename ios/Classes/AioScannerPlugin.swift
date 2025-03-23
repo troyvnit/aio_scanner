@@ -121,14 +121,7 @@ import Vision
                     return
                 }
                 
-                guard let args = call.arguments as? [String: Any],
-                      let outputDir = args["outputDirectory"] as? String else {
-                    result(["isSuccessful": false, "errorMessage": "Invalid arguments"])
-                    return
-                }
-                
                 self.barcodeScanResult = result
-                self.outputDirectory = outputDir
                 self.scanArgs = args
                 
                 // Get barcode formats to recognize

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AIO Scanner</string>
+    <string name="scan_barcode">Scan Barcode</string>
+    <string name="accept">Accept</string>
+    <string name="continue_scanning">Continue Scanning</string>
+    <string name="toggle_flash">Toggle Flash</string>
+    <string name="camera_permission_required">Camera permission is required for barcode scanning</string>
+    <string name="camera_start_error">Failed to start camera</string>
+    <string name="barcode_scan_error">Failed to scan barcode</string>
+</resources> 

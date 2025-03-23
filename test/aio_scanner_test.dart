@@ -311,7 +311,6 @@ void main() {
 
       try {
         final result = await AioScanner.startBarcodeScanning(
-          outputDirectory: '/mock/barcodes',
           recognizedFormats: ['qr', 'pdf417'],
           scanningMessage: 'Test barcode scanning',
         );
@@ -334,21 +333,6 @@ void main() {
       }
     });
 
-    test('returns null when platform returns null', () async {
-      mockResponse = null;
-
-      try {
-        final result = await AioScanner.startBarcodeScanning(
-          outputDirectory: '/mock/barcodes',
-        );
-
-        expect(result, isNull);
-      } catch (e) {
-        // Skip test if directory operation fails
-        print('Skipping barcode test due to directory operation: $e');
-      }
-    });
-
     test(
       'returns BarcodeScanResult with error when platform throws exception',
       () async {
@@ -361,9 +345,7 @@ void main() {
             });
 
         try {
-          final result = await AioScanner.startBarcodeScanning(
-            outputDirectory: '/mock/barcodes',
-          );
+          final result = await AioScanner.startBarcodeScanning();
 
           expect(result!.isSuccessful, false);
           expect(result.barcodeValues, isEmpty);

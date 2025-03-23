@@ -218,15 +218,8 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
                         return
                     }
 
-                    val outputDir = args["outputDirectory"] as? String
-                    if (outputDir == null) {
-                        result.error("INVALID_ARGUMENTS", "Output directory was not provided", null)
-                        return
-                    }
-
                     // Save the result to resolve later
                     pendingResult = result
-                    outputDirectory = outputDir
                     currentScanArgs = args
                     
                     // Get barcode formats to recognize
@@ -291,22 +284,29 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
     /**
      * Starts the barcode scanner with appropriate configuration.
      * 
-     * This method launches the device's camera app to capture an image that will be
-     * processed for barcodes. The approach is:
-     * 1. Launch the camera app with an intent
-     * 2. Get the captured image in onActivityResult
-     * 3. Process the image with ML Kit's barcode scanner
+     * This method implements a real-time barcode scanning experience using CameraX
+     * and ML Kit. It automatically detects barcodes in the camera preview without
+     * requiring the user to capture a photo.
      */
     private fun startBarcodeScanner() {
         try {
-            // Instead of creating a file, we'll use ML Kit's barcode scanner directly
-            // through a camera intent. This is a simplified approach that avoids having
-            // to save temporary files to the filesystem.
+            if (activity == null) {
+                pendingResult?.error("NO_ACTIVITY", "No activity available", null)
+                pendingResult = null
+                return
+            }
+
+            // Create the barcode scanner
+            val scannerOptions = createBarcodeScannerOptions()
+            val scanner = BarcodeScanning.getClient(scannerOptions)
             
-            // Create a simple camera intent without specifying output file
-            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+            // Create CameraX intent
+            val intent = Intent(activity, BarcodeScannerActivity::class.java)
             
-            // Start the camera activity
+            // Pass barcode formats as an extra
+            intent.putStringArrayListExtra("barcodeFormats", ArrayList(barcodeFormats))
+            
+            // Start the activity
             activity?.startActivityForResult(intent, BARCODE_SCAN_REQUEST_CODE)
         } catch (e: Exception) {
             pendingResult?.error("SCANNER_ERROR", "Failed to start barcode scanner: ${e.message}", null)
@@ -315,15 +315,49 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
     }
 
     /**
-     * Processes the activity result from the document scanner.
+     * Creates barcode scanner options based on the requested formats.
+     */
+    private fun createBarcodeScannerOptions(): BarcodeScannerOptions {
+        return if (barcodeFormats.isEmpty()) {
+            BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+                .build()
+        } else {
+            // Map format strings to Barcode format constants
+            var formatFlags = 0
+            for (format in barcodeFormats) {
+                val flag = when (format.lowercase()) {
+                    "qr" -> Barcode.FORMAT_QR_CODE
+                    "code128" -> Barcode.FORMAT_CODE_128
+                    "code39" -> Barcode.FORMAT_CODE_39
+                    "code93" -> Barcode.FORMAT_CODE_93
+                    "ean8" -> Barcode.FORMAT_EAN_8
+                    "ean13" -> Barcode.FORMAT_EAN_13
+                    "upc" -> Barcode.FORMAT_UPC_A or Barcode.FORMAT_UPC_E
+                    "pdf417" -> Barcode.FORMAT_PDF417
+                    "aztec" -> Barcode.FORMAT_AZTEC
+                    "datamatrix" -> Barcode.FORMAT_DATA_MATRIX
+                    "itf" -> Barcode.FORMAT_ITF
+                    else -> 0 // Skip unknown formats
+                }
+                formatFlags = formatFlags or flag
+            }
+            
+            // If no valid formats were specified, use all formats
+            if (formatFlags == 0) {
+                formatFlags = Barcode.FORMAT_ALL_FORMATS
+            }
+            
+            BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(formatFlags)
+                .build()
+        }
+    }
+
+    /**
+     * Process the activity result from the barcode scanner.
      * 
-     * This method is called when the document scanner activity finishes, either
-     * with a successful scan or cancellation.
-     * 
-     * @param requestCode The request code originally supplied to startActivityForResult().
-     * @param resultCode The result code returned by the document scanner activity.
-     * @param data An Intent containing the result data.
-     * @return true if the result was handled, false otherwise.
+     * This method is updated to handle results from the BarcodeScannerActivity.
      */
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
         if (requestCode == DOCUMENT_SCAN_REQUEST_CODE) {
@@ -339,36 +373,19 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
                 return true
             }
         } else if (requestCode == BARCODE_SCAN_REQUEST_CODE) {
-            if (resultCode == Activity.RESULT_OK) {
-                // Get the captured image and process it for barcodes
-                try {
-                    // Get the image from the camera
-                    val bitmap = if (data?.extras?.get("data") as? Bitmap != null) {
-                        // Some devices return a thumbnail in the data
-                        data.extras?.get("data") as Bitmap
-                    } else {
-                        // If no bitmap is available, return an error
-                        pendingResult?.success(mapOf(
-                            "isSuccessful" to false,
-                            "barcodeValues" to listOf<String>(),
-                            "barcodeFormats" to listOf<String>(),
-                            "errorMessage" to "Failed to get image from camera"
-                        ))
-                        pendingResult = null
-                        return true
-                    }
-                    
-                    // Process the image for barcodes
-                    processBarcodeImage(bitmap)
-                } catch (e: Exception) {
-                    pendingResult?.success(mapOf(
-                        "isSuccessful" to false,
-                        "barcodeValues" to listOf<String>(),
-                        "barcodeFormats" to listOf<String>(),
-                        "errorMessage" to "Error processing camera result: ${e.message}"
-                    ))
-                    pendingResult = null
-                }
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                // Get the scanned barcode results from the intent
+                val barcodeValues = data.getStringArrayListExtra("barcodeValues") ?: ArrayList()
+                val barcodeFormats = data.getStringArrayListExtra("barcodeFormats") ?: ArrayList()
+                
+                // Return result to Flutter
+                pendingResult?.success(mapOf(
+                    "isSuccessful" to (barcodeValues.isNotEmpty()),
+                    "barcodeValues" to barcodeValues,
+                    "barcodeFormats" to barcodeFormats,
+                    "errorMessage" to if (barcodeValues.isEmpty()) "No barcodes detected" else null
+                ))
+                pendingResult = null
                 return true
             } else if (resultCode == Activity.RESULT_CANCELED) {
                 pendingResult?.success(mapOf(
@@ -579,126 +596,6 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
             return result
         } catch (e: Exception) {
             return ""
-        }
-    }
-
-    /**
-     * Process the image for barcodes using ML Kit.
-     * 
-     * This method takes a bitmap image and scans it for barcodes using ML Kit's
-     * barcode scanning API.
-     * 
-     * @param bitmap The image to process for barcodes
-     */
-    private fun processBarcodeImage(bitmap: Bitmap) {
-        try {
-            // Create ML Kit InputImage
-            val image = InputImage.fromBitmap(bitmap, 0)
-            
-            // Configure barcode scanner options based on requested formats
-            val options = if (barcodeFormats.isEmpty()) {
-                BarcodeScannerOptions.Builder()
-                    .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
-                    .build()
-            } else {
-                // Map format strings to Barcode format constants
-                var formatFlags = 0
-                for (format in barcodeFormats) {
-                    val flag = when (format.lowercase()) {
-                        "qr" -> Barcode.FORMAT_QR_CODE
-                        "code128" -> Barcode.FORMAT_CODE_128
-                        "code39" -> Barcode.FORMAT_CODE_39
-                        "code93" -> Barcode.FORMAT_CODE_93
-                        "ean8" -> Barcode.FORMAT_EAN_8
-                        "ean13" -> Barcode.FORMAT_EAN_13
-                        "upc" -> Barcode.FORMAT_UPC_A or Barcode.FORMAT_UPC_E
-                        "pdf417" -> Barcode.FORMAT_PDF417
-                        "aztec" -> Barcode.FORMAT_AZTEC
-                        "datamatrix" -> Barcode.FORMAT_DATA_MATRIX
-                        "itf" -> Barcode.FORMAT_ITF
-                        else -> 0 // Skip unknown formats
-                    }
-                    formatFlags = formatFlags or flag
-                }
-                
-                // If no valid formats were specified, use all formats
-                if (formatFlags == 0) {
-                    formatFlags = Barcode.FORMAT_ALL_FORMATS
-                }
-                
-                BarcodeScannerOptions.Builder()
-                    .setBarcodeFormats(formatFlags)
-                    .build()
-            }
-            
-            // Get barcode scanner with options
-            val scanner = BarcodeScanning.getClient(options)
-            
-            // Process the image and look for barcodes
-            scanner.process(image)
-                .addOnSuccessListener { barcodes ->
-                    // Extract barcode values and formats
-                    val barcodeValues = mutableListOf<String>()
-                    val barcodeFormats = mutableListOf<String>()
-                    
-                    for (barcode in barcodes) {
-                        barcode.rawValue?.let { value ->
-                            barcodeValues.add(value)
-                            
-                            // Map the format type to a string
-                            val format = when (barcode.format) {
-                                Barcode.FORMAT_QR_CODE -> "qr"
-                                Barcode.FORMAT_CODE_128 -> "code128"
-                                Barcode.FORMAT_CODE_39 -> "code39"
-                                Barcode.FORMAT_CODE_93 -> "code93"
-                                Barcode.FORMAT_EAN_8 -> "ean8"
-                                Barcode.FORMAT_EAN_13 -> "ean13"
-                                Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E -> "upc"
-                                Barcode.FORMAT_PDF417 -> "pdf417"
-                                Barcode.FORMAT_AZTEC -> "aztec"
-                                Barcode.FORMAT_DATA_MATRIX -> "datamatrix"
-                                Barcode.FORMAT_ITF -> "itf"
-                                else -> "unknown"
-                            }
-                            barcodeFormats.add(format)
-                        }
-                    }
-                    
-                    // Prepare result for Flutter
-                    val result = mapOf(
-                        "isSuccessful" to (barcodeValues.isNotEmpty()),
-                        "barcodeValues" to barcodeValues,
-                        "barcodeFormats" to barcodeFormats,
-                        "errorMessage" to if (barcodeValues.isEmpty()) "No barcodes detected" else null
-                    )
-                    
-                    // Return result to Flutter
-                    mainHandler.post {
-                        pendingResult?.success(result)
-                        pendingResult = null
-                    }
-                }
-                .addOnFailureListener { e ->
-                    mainHandler.post {
-                        pendingResult?.success(mapOf(
-                            "isSuccessful" to false,
-                            "barcodeValues" to listOf<String>(),
-                            "barcodeFormats" to listOf<String>(),
-                            "errorMessage" to "Failed to process image: ${e.message}"
-                        ))
-                        pendingResult = null
-                    }
-                }
-        } catch (e: Exception) {
-            mainHandler.post {
-                pendingResult?.success(mapOf(
-                    "isSuccessful" to false,
-                    "barcodeValues" to listOf<String>(),
-                    "barcodeFormats" to listOf<String>(),
-                    "errorMessage" to "Error processing image: ${e.message}"
-                ))
-                pendingResult = null
-            }
         }
     }
 

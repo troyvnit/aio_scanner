@@ -288,7 +288,6 @@ class AioScanner {
   /// ML Kit's barcode scanning capabilities.
   ///
   /// Parameters:
-  /// - [outputDirectory]: Directory where scanned barcode images will be saved.
   ///   This directory will be created if it doesn't exist.
   /// - [recognizedFormats]: List of barcode formats to recognize. If empty, all
   ///   supported formats will be recognized.
@@ -310,29 +309,11 @@ class AioScanner {
   /// }
   /// ```
   static Future<BarcodeScanResult?> startBarcodeScanning({
-    String outputDirectory = 'scanned_barcodes',
     List<String> recognizedFormats = const [],
     String scanningMessage = 'Point camera at a barcode',
   }) async {
     try {
-      final documentsDirectory = await getApplicationDocumentsDirectory();
-
-      // Make sure the outputDirectory doesn't start with a slash
-      String sanitizedPath = outputDirectory;
-      if (sanitizedPath.startsWith('/')) {
-        sanitizedPath = sanitizedPath.substring(1);
-      }
-
-      final outputPath = '${documentsDirectory.path}/$sanitizedPath';
-      final directory = Directory(outputPath);
-
-      // Create directory if it doesn't exist
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-
       final Map<String, dynamic> args = {
-        'outputDirectory': directory.path,
         'recognizedFormats': recognizedFormats,
         'scanningMessage': scanningMessage,
       };

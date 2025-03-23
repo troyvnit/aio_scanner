@@ -109,7 +109,6 @@ void main() {
     // Call the method with specific arguments
     try {
       await AioScanner.startBarcodeScanning(
-        outputDirectory: '/mock/barcodes',
         recognizedFormats: ['qr', 'ean13'],
         scanningMessage: 'Scan a barcode',
       );
@@ -160,9 +159,7 @@ void main() {
 
     // Call the method
     try {
-      final result = await AioScanner.startBarcodeScanning(
-        outputDirectory: '/mock/barcodes',
-      );
+      final result = await AioScanner.startBarcodeScanning();
 
       // Verify the result was processed correctly
       expect(result, isNotNull);
@@ -222,9 +219,7 @@ void main() {
 
     // Call the method
     try {
-      final result = await AioScanner.startBarcodeScanning(
-        outputDirectory: '/mock/barcodes',
-      );
+      final result = await AioScanner.startBarcodeScanning();
 
       // Verify the exception was handled properly
       expect(result, isNotNull);
