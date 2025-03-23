@@ -25,7 +25,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Camera access is required to scan documents and business cards</string>
+	<string>Camera access is required to scan documents and barcodes</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Photo library access is required to import documents from gallery</string>
 	<key>UILaunchStoryboardName</key>

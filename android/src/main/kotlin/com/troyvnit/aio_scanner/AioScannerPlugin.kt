@@ -15,6 +15,11 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.common.InputImage
+import com.google.android.gms.tasks.Task
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -26,6 +31,7 @@ import io.flutter.plugin.common.PluginRegistry
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
+import android.provider.MediaStore
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -41,7 +47,7 @@ import kotlin.coroutines.suspendCoroutine
  * - High-quality document scanning with edge detection
  * - Multi-page document support
  * - Text recognition (OCR) from scanned documents
- * - Business card scanning optimization
+ * - Barcode scanning with multiple format support
  * - Background processing to maintain UI responsiveness
  * 
  * The implementation uses Google's GMS ML Kit Document Scanner, which provides a native UI
@@ -118,6 +124,16 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
     }
 
     /**
+     * Request code for barcode scanning activity.
+     */
+    private val BARCODE_SCAN_REQUEST_CODE = 101
+    
+    /**
+     * List of barcode formats to recognize.
+     */
+    private var barcodeFormats: List<String> = listOf()
+
+    /**
      * Called when the plugin is attached to the Flutter engine.
      * 
      * This is where we initialize the plugin's communication channel and register
@@ -141,7 +157,8 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
      * - "getPlatformVersion": Returns the Android version.
      * - "isDocumentScanningSupported": Checks if document scanning is supported on the device.
      * - "startDocumentScanning": Initiates the document scanning process.
-     * - "startBusinessCardScanning": Initiates scanning specifically optimized for business cards.
+     * - "isBarcodeScanningSupported": Checks if barcode scanning is supported on the device.
+     * - "startBarcodeScanning": Initiates barcode scanning.
      * 
      * @param call The method call from Flutter containing the method name and arguments.
      * @param result The result handler to send responses back to Flutter.
@@ -184,7 +201,11 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
                     result.error("ERROR", e.message, e.stackTraceToString())
                 }
             }
-            "startBusinessCardScanning" -> {
+            "isBarcodeScanningSupported" -> {
+                // ML Kit Barcode Scanning should be available on most devices with Google Play Services
+                result.success(true)
+            }
+            "startBarcodeScanning" -> {
                 try {
                     if (activity == null) {
                         result.error("NO_ACTIVITY", "No activity available", null)
@@ -207,10 +228,11 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
                     pendingResult = result
                     outputDirectory = outputDir
                     currentScanArgs = args
+                    
+                    // Get barcode formats to recognize
+                    barcodeFormats = args["recognizedFormats"] as? List<String> ?: listOf()
 
-                    // For business card scanning we use the same scanner
-                    // but with different options if needed
-                    startDocumentScanner(isBusinessCard = true)
+                    startBarcodeScanner()
                 } catch (e: Exception) {
                     result.error("ERROR", e.message, e.stackTraceToString())
                 }
@@ -233,19 +255,13 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
      * - Perspective correction
      * - Multi-page support
      * - Gallery import
-     * 
-     * @param isBusinessCard If true, optimizes scanner settings for business cards by limiting
-     *                      the scan to a single page and potentially adjusting other scanner options.
      */
-    private fun startDocumentScanner(isBusinessCard: Boolean = false) {
+    private fun startDocumentScanner() {
         try {
-            // Configure scanner options based on the scan type
+            // Configure scanner options
             val scannerOptions = GmsDocumentScannerOptions.Builder()
                 .setGalleryImportAllowed(currentScanArgs?.get("allowGalleryImport") as? Boolean ?: true)
-                .setPageLimit(
-                    if (isBusinessCard) 1 
-                    else (currentScanArgs?.get("maxNumPages") as? Int ?: 5)
-                )
+                .setPageLimit(currentScanArgs?.get("maxNumPages") as? Int ?: 5)
                 .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
                 .build()
 
@@ -273,6 +289,32 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
     }
 
     /**
+     * Starts the barcode scanner with appropriate configuration.
+     * 
+     * This method launches the device's camera app to capture an image that will be
+     * processed for barcodes. The approach is:
+     * 1. Launch the camera app with an intent
+     * 2. Get the captured image in onActivityResult
+     * 3. Process the image with ML Kit's barcode scanner
+     */
+    private fun startBarcodeScanner() {
+        try {
+            // Instead of creating a file, we'll use ML Kit's barcode scanner directly
+            // through a camera intent. This is a simplified approach that avoids having
+            // to save temporary files to the filesystem.
+            
+            // Create a simple camera intent without specifying output file
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+            
+            // Start the camera activity
+            activity?.startActivityForResult(intent, BARCODE_SCAN_REQUEST_CODE)
+        } catch (e: Exception) {
+            pendingResult?.error("SCANNER_ERROR", "Failed to start barcode scanner: ${e.message}", null)
+            pendingResult = null
+        }
+    }
+
+    /**
      * Processes the activity result from the document scanner.
      * 
      * This method is called when the document scanner activity finishes, either
@@ -291,6 +333,48 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
             } else if (resultCode == Activity.RESULT_CANCELED) {
                 pendingResult?.success(mapOf(
                     "isSuccessful" to false,
+                    "errorMessage" to "User cancelled scanning"
+                ))
+                pendingResult = null
+                return true
+            }
+        } else if (requestCode == BARCODE_SCAN_REQUEST_CODE) {
+            if (resultCode == Activity.RESULT_OK) {
+                // Get the captured image and process it for barcodes
+                try {
+                    // Get the image from the camera
+                    val bitmap = if (data?.extras?.get("data") as? Bitmap != null) {
+                        // Some devices return a thumbnail in the data
+                        data.extras?.get("data") as Bitmap
+                    } else {
+                        // If no bitmap is available, return an error
+                        pendingResult?.success(mapOf(
+                            "isSuccessful" to false,
+                            "barcodeValues" to listOf<String>(),
+                            "barcodeFormats" to listOf<String>(),
+                            "errorMessage" to "Failed to get image from camera"
+                        ))
+                        pendingResult = null
+                        return true
+                    }
+                    
+                    // Process the image for barcodes
+                    processBarcodeImage(bitmap)
+                } catch (e: Exception) {
+                    pendingResult?.success(mapOf(
+                        "isSuccessful" to false,
+                        "barcodeValues" to listOf<String>(),
+                        "barcodeFormats" to listOf<String>(),
+                        "errorMessage" to "Error processing camera result: ${e.message}"
+                    ))
+                    pendingResult = null
+                }
+                return true
+            } else if (resultCode == Activity.RESULT_CANCELED) {
+                pendingResult?.success(mapOf(
+                    "isSuccessful" to false,
+                    "barcodeValues" to listOf<String>(),
+                    "barcodeFormats" to listOf<String>(),
                     "errorMessage" to "User cancelled scanning"
                 ))
                 pendingResult = null
@@ -499,6 +583,126 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
     }
 
     /**
+     * Process the image for barcodes using ML Kit.
+     * 
+     * This method takes a bitmap image and scans it for barcodes using ML Kit's
+     * barcode scanning API.
+     * 
+     * @param bitmap The image to process for barcodes
+     */
+    private fun processBarcodeImage(bitmap: Bitmap) {
+        try {
+            // Create ML Kit InputImage
+            val image = InputImage.fromBitmap(bitmap, 0)
+            
+            // Configure barcode scanner options based on requested formats
+            val options = if (barcodeFormats.isEmpty()) {
+                BarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+                    .build()
+            } else {
+                // Map format strings to Barcode format constants
+                var formatFlags = 0
+                for (format in barcodeFormats) {
+                    val flag = when (format.lowercase()) {
+                        "qr" -> Barcode.FORMAT_QR_CODE
+                        "code128" -> Barcode.FORMAT_CODE_128
+                        "code39" -> Barcode.FORMAT_CODE_39
+                        "code93" -> Barcode.FORMAT_CODE_93
+                        "ean8" -> Barcode.FORMAT_EAN_8
+                        "ean13" -> Barcode.FORMAT_EAN_13
+                        "upc" -> Barcode.FORMAT_UPC_A or Barcode.FORMAT_UPC_E
+                        "pdf417" -> Barcode.FORMAT_PDF417
+                        "aztec" -> Barcode.FORMAT_AZTEC
+                        "datamatrix" -> Barcode.FORMAT_DATA_MATRIX
+                        "itf" -> Barcode.FORMAT_ITF
+                        else -> 0 // Skip unknown formats
+                    }
+                    formatFlags = formatFlags or flag
+                }
+                
+                // If no valid formats were specified, use all formats
+                if (formatFlags == 0) {
+                    formatFlags = Barcode.FORMAT_ALL_FORMATS
+                }
+                
+                BarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(formatFlags)
+                    .build()
+            }
+            
+            // Get barcode scanner with options
+            val scanner = BarcodeScanning.getClient(options)
+            
+            // Process the image and look for barcodes
+            scanner.process(image)
+                .addOnSuccessListener { barcodes ->
+                    // Extract barcode values and formats
+                    val barcodeValues = mutableListOf<String>()
+                    val barcodeFormats = mutableListOf<String>()
+                    
+                    for (barcode in barcodes) {
+                        barcode.rawValue?.let { value ->
+                            barcodeValues.add(value)
+                            
+                            // Map the format type to a string
+                            val format = when (barcode.format) {
+                                Barcode.FORMAT_QR_CODE -> "qr"
+                                Barcode.FORMAT_CODE_128 -> "code128"
+                                Barcode.FORMAT_CODE_39 -> "code39"
+                                Barcode.FORMAT_CODE_93 -> "code93"
+                                Barcode.FORMAT_EAN_8 -> "ean8"
+                                Barcode.FORMAT_EAN_13 -> "ean13"
+                                Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E -> "upc"
+                                Barcode.FORMAT_PDF417 -> "pdf417"
+                                Barcode.FORMAT_AZTEC -> "aztec"
+                                Barcode.FORMAT_DATA_MATRIX -> "datamatrix"
+                                Barcode.FORMAT_ITF -> "itf"
+                                else -> "unknown"
+                            }
+                            barcodeFormats.add(format)
+                        }
+                    }
+                    
+                    // Prepare result for Flutter
+                    val result = mapOf(
+                        "isSuccessful" to (barcodeValues.isNotEmpty()),
+                        "barcodeValues" to barcodeValues,
+                        "barcodeFormats" to barcodeFormats,
+                        "errorMessage" to if (barcodeValues.isEmpty()) "No barcodes detected" else null
+                    )
+                    
+                    // Return result to Flutter
+                    mainHandler.post {
+                        pendingResult?.success(result)
+                        pendingResult = null
+                    }
+                }
+                .addOnFailureListener { e ->
+                    mainHandler.post {
+                        pendingResult?.success(mapOf(
+                            "isSuccessful" to false,
+                            "barcodeValues" to listOf<String>(),
+                            "barcodeFormats" to listOf<String>(),
+                            "errorMessage" to "Failed to process image: ${e.message}"
+                        ))
+                        pendingResult = null
+                    }
+                }
+        } catch (e: Exception) {
+            mainHandler.post {
+                pendingResult?.success(mapOf(
+                    "isSuccessful" to false,
+                    "barcodeValues" to listOf<String>(),
+                    "barcodeFormats" to listOf<String>(),
+                    "errorMessage" to "Error processing image: ${e.message}"
+                ))
+                pendingResult = null
+            }
+        }
+    }
+
+    /**
      * Called when the plugin is detached from the Flutter engine.
      * 
      * This is where we clean up resources to prevent memory leaks.
@@ -554,10 +758,12 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
     companion object {
         /**
          * Request code for document scanning activity.
-         * 
-         * This code is used to identify results coming from our document scanner
-         * in the onActivityResult method.
          */
         private const val DOCUMENT_SCAN_REQUEST_CODE = 100
+        
+        /**
+         * Request code for barcode scanning activity.
+         */
+        private const val BARCODE_SCAN_REQUEST_CODE = 101
     }
 } 

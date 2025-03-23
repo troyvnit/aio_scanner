@@ -66,6 +66,3 @@ coverage/
 # Demo folder temporary files
 /demo/*
 !/demo/README.md
-# Uncomment the following lines when you add your actual demo files
-#!/demo/document_scanner.gif
-#!/demo/business_card_scanner.gif

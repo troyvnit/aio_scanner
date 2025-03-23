@@ -6,23 +6,24 @@ import Vision
 /**
  * AioScannerPlugin
  *
- * A Flutter plugin that provides document scanning capabilities for iOS using the VisionKit framework.
- * This plugin enables Flutter applications to scan documents and business cards using the native iOS
- * document scanner interface, extract text from scanned images, and save them to a specified directory.
+ * A Flutter plugin that provides document and barcode scanning capabilities for iOS using the VisionKit framework.
+ * This plugin enables Flutter applications to scan documents and barcodes using the native iOS
+ * scanner interfaces, extract text from scanned images, and save them to a specified directory.
  *
  * Key features:
  * - Document scanning with edge detection and perspective correction
- * - Business card scanning optimization
+ * - Barcode scanning for QR codes, UPC, EAN, and other formats
  * - Optical Character Recognition (OCR) for text extraction
  * - Image saving with configurable output location
  * 
  * The implementation leverages Apple's VisionKit framework for the scanning UI and the Vision
  * framework for text recognition, providing a seamless native experience within Flutter apps.
  */
-@objc public class AioScannerPlugin: NSObject, FlutterPlugin, VNDocumentCameraViewControllerDelegate {
+@objc public class AioScannerPlugin: NSObject, FlutterPlugin, VNDocumentCameraViewControllerDelegate, DataScannerViewControllerDelegate {
     /// The Flutter result callback to return scanning results
     /// This is retained until the scanning process completes or fails
     private var documentScanResult: FlutterResult?
+    private var barcodeScanResult: FlutterResult?
     
     /// Directory path where scanned images will be saved
     /// This is provided by the Flutter application when initiating a scan
@@ -31,6 +32,14 @@ import Vision
     /// Arguments passed from Flutter for the current scan operation
     /// May include parameters like maxNumPages and UI messages
     private var scanArgs: [String: Any]?
+    
+    /// Detected barcodes during barcode scanning
+    @available(iOS 16.0, *)
+    private var detectedBarcodes: [RecognizedItem.Barcode] = []
+    
+    /// Data scanner view controller instance for barcode scanning
+    @available(iOS 16.0, *)
+    private var dataScannerViewController: DataScannerViewController?
     
     /**
      * Registers this plugin with the Flutter engine.
@@ -60,8 +69,9 @@ import Vision
      * Supported methods:
      * - getPlatformVersion: Returns the iOS version.
      * - isDocumentScanningSupported: Checks if document scanning is supported on this device.
+     * - isBarcodeScanningSupported: Checks if barcode scanning is supported on this device.
      * - startDocumentScanning: Initiates document scanning.
-     * - startBusinessCardScanning: Initiates optimized scanning for business cards.
+     * - startBarcodeScanning: Initiates barcode scanning.
      *
      * All methods return results asynchronously via the result callback.
      *
@@ -76,6 +86,13 @@ import Vision
             
         case "isDocumentScanningSupported":
             result(VNDocumentCameraViewController.isSupported)
+            
+        case "isBarcodeScanningSupported":
+            if #available(iOS 16.0, *) {
+                result(DataScannerViewController.isSupported && DataScannerViewController.isAvailable)
+            } else {
+                result(false)
+            }
             
         case "startDocumentScanning":
             guard VNDocumentCameraViewController.isSupported else {
@@ -97,29 +114,54 @@ import Vision
                 self.startDocumentScanner()
             }
             
-        case "startBusinessCardScanning":
-            // Business card scanning uses the same document scanner but with different parameters
-            guard VNDocumentCameraViewController.isSupported else {
-                result(["isSuccessful": false, "errorMessage": "Document scanning is not supported on this device"])
-                return
-            }
-            
-            guard let args = call.arguments as? [String: Any],
-                  let outputDir = args["outputDirectory"] as? String else {
-                result(["isSuccessful": false, "errorMessage": "Invalid arguments"])
-                return
-            }
-            
-            self.documentScanResult = result
-            self.outputDirectory = outputDir
-            self.scanArgs = args
-            
-            DispatchQueue.main.async {
-                self.startDocumentScanner()
+        case "startBarcodeScanning":
+            if #available(iOS 16.0, *) {
+                guard DataScannerViewController.isSupported && DataScannerViewController.isAvailable else {
+                    result(["isSuccessful": false, "errorMessage": "Barcode scanning is not supported on this device"])
+                    return
+                }
+                
+                guard let args = call.arguments as? [String: Any],
+                      let outputDir = args["outputDirectory"] as? String else {
+                    result(["isSuccessful": false, "errorMessage": "Invalid arguments"])
+                    return
+                }
+                
+                self.barcodeScanResult = result
+                self.outputDirectory = outputDir
+                self.scanArgs = args
+                
+                // Get barcode formats to recognize
+                var recognizedFormats = args["recognizedFormats"] as? [String] ?? []
+                
+                DispatchQueue.main.async {
+                    self.startBarcodeScanner(recognizedFormats: recognizedFormats)
+                }
+            } else {
+                result(["isSuccessful": false, "errorMessage": "Barcode scanning requires iOS 16.0 or later"])
             }
             
         default:
             result(FlutterMethodNotImplemented)
+        }
+    }
+    
+    /**
+     * Gets the root view controller of the application.
+     *
+     * This method attempts to find the key window and its root view controller
+     * using an approach that works on iOS 13 and newer.
+     *
+     * - Returns: The root view controller, or nil if it couldn't be found.
+     */
+    private func getRootViewController() -> UIViewController? {
+        // For iOS 13 and later
+        if #available(iOS 13.0, *) {
+            let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+            return scene?.windows.first?.rootViewController
+        } else {
+            // Fallback for older iOS versions
+            return UIApplication.shared.keyWindow?.rootViewController
         }
     }
     
@@ -141,7 +183,7 @@ import Vision
         scannerViewController.delegate = self
         
         // Get the root view controller
-        guard let rootViewController = UIApplication.shared.windows.first?.rootViewController else {
+        guard let rootViewController = getRootViewController() else {
             self.documentScanResult?(["isSuccessful": false, "errorMessage": "Unable to find the root view controller"])
             self.documentScanResult = nil
             return
@@ -149,6 +191,135 @@ import Vision
         
         // Present the scanner
         rootViewController.present(scannerViewController, animated: true, completion: nil)
+    }
+    
+    /**
+     * Initiates the barcode scanner interface.
+     *
+     * This method creates and presents the native iOS barcode scanner (DataScannerViewController),
+     * which provides:
+     * - Real-time barcode detection
+     * - Support for multiple barcode formats
+     * - Automatic focus and exposure adjustment
+     *
+     * The scanner UI is presented modally over the current view controller.
+     * Results are handled by the delegate methods when barcodes are recognized.
+     *
+     * - Parameter recognizedFormats: Array of barcode format strings to recognize
+     */
+    @available(iOS 16.0, *)
+    private func startBarcodeScanner(recognizedFormats: [String]) {
+        // Reset detected barcodes
+        self.detectedBarcodes = []
+        
+        // Configure recognized data types
+        var dataTypes: Set<DataScannerViewController.RecognizedDataType> = []
+        
+        if recognizedFormats.isEmpty {
+            // If no specific formats are requested, recognize all barcodes
+            dataTypes.insert(.barcode())
+        } else {
+            // Create an array to collect all the barcode symbologies
+            var allBarcodeTypes: [DataScannerViewController.RecognizedDataType] = []
+            
+            // Map format strings to appropriate barcode symbologies
+            for format in recognizedFormats {
+                switch format.lowercased() {
+                case "qr":
+                    allBarcodeTypes.append(.barcode(symbologies: [.qr]))
+                case "code128":
+                    allBarcodeTypes.append(.barcode(symbologies: [.code128]))
+                case "code39":
+                    allBarcodeTypes.append(.barcode(symbologies: [.code39]))
+                case "code93":
+                    allBarcodeTypes.append(.barcode(symbologies: [.code93]))
+                case "ean8":
+                    allBarcodeTypes.append(.barcode(symbologies: [.ean8]))
+                case "ean13":
+                    allBarcodeTypes.append(.barcode(symbologies: [.ean13]))
+                case "upc":
+                    allBarcodeTypes.append(.barcode(symbologies: [.upce]))
+                    allBarcodeTypes.append(.barcode(symbologies: [.ean13])) // UPC-A is encoded as EAN-13
+                case "pdf417":
+                    allBarcodeTypes.append(.barcode(symbologies: [.pdf417]))
+                case "aztec":
+                    allBarcodeTypes.append(.barcode(symbologies: [.aztec]))
+                case "datamatrix":
+                    allBarcodeTypes.append(.barcode(symbologies: [.dataMatrix]))
+                case "itf":
+                    allBarcodeTypes.append(.barcode(symbologies: [.itf14]))
+                default:
+                    // Unknown format, ignore
+                    break
+                }
+            }
+            
+            // Add all collected types to the set
+            for type in allBarcodeTypes {
+                dataTypes.insert(type)
+            }
+            
+            if dataTypes.isEmpty {
+                // If no valid formats were specified, fall back to all barcode formats
+                dataTypes.insert(.barcode())
+            }
+        }
+        
+        // Configure scanner
+        let dataScannerViewController = DataScannerViewController(
+            recognizedDataTypes: dataTypes,
+            qualityLevel: .balanced,
+            recognizesMultipleItems: true,
+            isPinchToZoomEnabled: true,
+            isGuidanceEnabled: true,
+            isHighlightingEnabled: true
+        )
+        
+        // Set delegate
+        dataScannerViewController.delegate = self
+        
+        // Configure UI message if available
+        if let scanningMessage = self.scanArgs?["scanningMessage"] as? String {
+            // Note: The guidanceContentState property is only available in iOS 17+
+            // We'll just log the message for now since we're targeting iOS 16.0
+            #if DEBUG
+            print("Scanning message: \(scanningMessage)")
+            #endif
+        }
+        
+        self.dataScannerViewController = dataScannerViewController
+        
+        // Get the root view controller
+        guard let rootViewController = getRootViewController() else {
+            self.barcodeScanResult?(["isSuccessful": false, "errorMessage": "Unable to find the root view controller"])
+            self.barcodeScanResult = nil
+            return
+        }
+        
+        // Present the scanner
+        rootViewController.present(dataScannerViewController, animated: true) {
+            do {
+                try dataScannerViewController.startScanning()
+            } catch {
+                self.dismissBarcodeScanner(withResult: ["isSuccessful": false, "errorMessage": "Failed to start scanning: \(error.localizedDescription)"])
+            }
+        }
+    }
+    
+    /**
+     * Dismisses the barcode scanner and returns the result to Flutter.
+     *
+     * - Parameter result: The result to return to Flutter.
+     */
+    @available(iOS 16.0, *)
+    private func dismissBarcodeScanner(withResult result: [String: Any]) {
+        DispatchQueue.main.async {
+            self.dataScannerViewController?.dismiss(animated: true) {
+                self.barcodeScanResult?(result)
+                self.barcodeScanResult = nil
+                self.dataScannerViewController = nil
+            }
+        }
     }
     
     // MARK: - VNDocumentCameraViewControllerDelegate
@@ -261,6 +432,130 @@ import Vision
         }
     }
     
+    // MARK: - DataScannerViewControllerDelegate
+    
+    /**
+     * Called when items are added during barcode scanning.
+     *
+     * This delegate method is invoked when the barcode scanner recognizes new barcodes.
+     * It processes the detected barcodes and returns the results to Flutter.
+     *
+     * - Parameters:
+     *   - controller: The data scanner view controller.
+     *   - addedItems: The newly recognized items (barcodes).
+     *   - allItems: All currently recognized items.
+     */
+    @available(iOS 16.0, *)
+    public func dataScanner(_ dataScanner: DataScannerViewController, didAdd addedItems: [RecognizedItem], allItems: [RecognizedItem]) {
+        // Process only barcode items
+        let newBarcodes = addedItems.compactMap { item -> RecognizedItem.Barcode? in
+            if case .barcode(let barcode) = item {
+                return barcode
+            }
+            return nil
+        }
+        
+        // Add new barcodes to our collection
+        self.detectedBarcodes.append(contentsOf: newBarcodes)
+        
+        // If we have at least one barcode, process it
+        if !self.detectedBarcodes.isEmpty {
+            processScannedBarcodes()
+        }
+    }
+    
+    /**
+     * Called when the user taps on the cancel button in the barcode scanner.
+     *
+     * This delegate method is invoked when the user explicitly cancels the barcode scanning
+     * process. The cancellation is reported back to the Flutter application.
+     *
+     * - Parameter controller: The data scanner view controller.
+     */
+    @available(iOS 16.0, *)
+    public func dataScannerDidCancel(_ dataScanner: DataScannerViewController) {
+        dismissBarcodeScanner(withResult: ["isSuccessful": false, "errorMessage": "User cancelled scanning"])
+    }
+    
+    /**
+     * Called when an error occurs during barcode scanning.
+     *
+     * This delegate method is invoked when the barcode scanner encounters an error.
+     * The error is forwarded back to the Flutter application with relevant details.
+     *
+     * - Parameters:
+     *   - controller: The data scanner view controller.
+     *   - error: The error that occurred during scanning.
+     */
+    @available(iOS 16.0, *)
+    public func dataScanner(_ dataScanner: DataScannerViewController, didFailWithError error: Error) {
+        dismissBarcodeScanner(withResult: ["isSuccessful": false, "errorMessage": error.localizedDescription])
+    }
+    
+    /**
+     * Processes the scanned barcodes and returns the results to Flutter.
+     */
+    @available(iOS 16.0, *)
+    private func processScannedBarcodes() {
+        // Stop scanning to prevent multiple callbacks
+        self.dataScannerViewController?.stopScanning()
+        
+        // Extract barcode values and formats
+        var barcodeValues: [String] = []
+        var barcodeFormats: [String] = []
+        
+        for barcode in self.detectedBarcodes {
+            if let value = barcode.payloadStringValue {
+                barcodeValues.append(value)
+                
+                // Map the symbology type to a format string
+                let format: String
+                
+                if barcode.observation.symbology == .qr {
+                    format = "qr"
+                } else if barcode.observation.symbology == .code128 {
+                    format = "code128"
+                } else if barcode.observation.symbology == .code39 {
+                    format = "code39"
+                } else if barcode.observation.symbology == .code93 {
+                    format = "code93"
+                } else if barcode.observation.symbology == .ean8 {
+                    format = "ean8"
+                } else if barcode.observation.symbology == .ean13 {
+                    format = "ean13"
+                } else if barcode.observation.symbology == .upce {
+                    format = "upce"
+                } else if barcode.observation.symbology == .pdf417 {
+                    format = "pdf417"
+                } else if barcode.observation.symbology == .aztec {
+                    format = "aztec"
+                } else if barcode.observation.symbology == .dataMatrix {
+                    format = "datamatrix"
+                } else if barcode.observation.symbology == .itf14 {
+                    format = "itf"
+                } else {
+                    format = "unknown"
+                }
+                
+                barcodeFormats.append(format)
+            }
+        }
+        
+        // Prepare result
+        var result: [String: Any] = [
+            "isSuccessful": !barcodeValues.isEmpty,
+            "barcodeValues": barcodeValues,
+            "barcodeFormats": barcodeFormats
+        ]
+        
+        if barcodeValues.isEmpty {
+            result["errorMessage"] = "No barcodes detected"
+        }
+        
+        // Dismiss the scanner and return the result
+        dismissBarcodeScanner(withResult: result)
+    }
+    
     // MARK: - Text Recognition
     
     /**
@@ -297,7 +592,9 @@ import Vision
         let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         let request = VNRecognizeTextRequest { (request, error) in
             if let error = error {
+                #if DEBUG
                 print("Text recognition error: \(error)")
+                #endif
                 completion(nil)
                 return
             }
@@ -320,7 +617,9 @@ import Vision
         do {
             try requestHandler.perform([request])
         } catch {
+            #if DEBUG
             print("Failed to perform text recognition: \(error)")
+            #endif
             completion(nil)
         }
     }

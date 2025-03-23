@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial package structure
 - Document scanning with edge detection
-- Business card scanning
+- Barcode scanning
 - Text extraction (OCR) functionality
 - Support for iOS (VisionKit) and Android (ML Kit)
 - Example app demonstrating key features

@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.troyvnit.example"
+    namespace = "com.troyvnit.aioscanner.example"
     compileSdk = 35
     ndkVersion = "27.0.12077973"
 
@@ -21,7 +21,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.troyvnit.example"
+        applicationId = "com.troyvnit.aioscanner.example"
         // Explicitly set minSdk for ML Kit compatibility
         minSdk = 21 
         targetSdk = 34

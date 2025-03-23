@@ -35,9 +35,9 @@ class MyApp extends StatelessWidget {
 ///
 /// This screen provides UI for:
 /// 1. Initiating document scanning
-/// 2. Initiating business card scanning
-/// 3. Displaying scanned document images
-/// 4. Showing extracted text from scanned documents
+/// 2. Initiating barcode scanning
+/// 3. Displaying scanned document images or barcodes
+/// 4. Showing extracted text or barcode values
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -51,9 +51,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Text extracted from scanned documents using OCR
   String _extractedText = '';
-
+  
+  /// List of decoded barcode values
+  List<String> _barcodeValues = [];
+  
+  /// List of barcode formats detected
+  List<String> _barcodeFormats = [];
+  
   /// Loading state to manage UI during scanning operations
   bool _isLoading = false;
+  
+  /// Current scan mode (document or barcode)
+  String _currentScanMode = 'document';
 
   @override
   void initState() {
@@ -102,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
         (status) => status.isDenied || status.isPermanentlyDenied,
       )) {
         _showErrorSnackBar(
-          'Camera and storage permissions are required for document scanning. '
+          'Camera and storage permissions are required for scanning. '
           'Please enable them in app settings.',
         );
       }
@@ -136,17 +145,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 16),
                     _buildFeatureCard(
-                      title: 'Business Card Scanner',
-                      description: 'Scan and extract text from business cards',
-                      icon: Icons.contact_mail,
-                      onTap: _startBusinessCardScan,
+                      title: 'Barcode Scanner',
+                      description: 'Scan QR codes and barcodes',
+                      icon: Icons.qr_code_scanner,
+                      onTap: _startBarcodeScan,
                     ),
 
-                    // Results section
-                    if (_scannedImages.isNotEmpty) ...[
+                    // Document scan results
+                    if (_currentScanMode == 'document' && _scannedImages.isNotEmpty) ...[
                       const SizedBox(height: 32),
                       const Text(
-                        'Scanned Images',
+                        'Scanned Documents',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -186,28 +195,102 @@ class _HomeScreenState extends State<HomeScreen> {
                           },
                         ),
                       ),
+                      
+                      // Document extracted text
+                      if (_extractedText.isNotEmpty) ...[
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Extracted Text',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: Text(_extractedText),
+                        ),
+                      ],
                     ],
-
-                    // Extracted text section
-                    if (_extractedText.isNotEmpty) ...[
+                    
+                    // Barcode scan results
+                    if (_currentScanMode == 'barcode' && _barcodeValues.isNotEmpty) ...[
                       const SizedBox(height: 32),
                       const Text(
-                        'Extracted Text',
+                        'Scanned Barcodes',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: Text(_extractedText),
-                      ),
+                      
+                      // List of detected barcodes
+                      ...List.generate(_barcodeValues.length, (index) {
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.deepPurple.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.deepPurple.shade100),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, 
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.deepPurple.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      _barcodeFormats[index].toUpperCase(),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                        color: Colors.deepPurple.shade800,
+                                      ),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  IconButton(
+                                    icon: const Icon(Icons.copy, size: 20),
+                                    onPressed: () {
+                                      // Copy to clipboard functionality could be added here
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Copied to clipboard'),
+                                          behavior: SnackBarBehavior.floating,
+                                        ),
+                                      );
+                                    },
+                                    tooltip: 'Copy to clipboard',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _barcodeValues[index],
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
                     ],
                   ],
                 ),
@@ -295,7 +378,18 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       setState(() {
         _isLoading = true;
+        _currentScanMode = 'document';
       });
+
+      // Check if document scanning is supported
+      final isSupported = await AioScanner.isDocumentScanningSupported();
+      if (!isSupported) {
+        setState(() {
+          _isLoading = false;
+        });
+        _showErrorSnackBar('Document scanning is not supported on this device');
+        return;
+      }
 
       // Call the plugin
       ScanResult? result = await AioScanner.startDocumentScanning(
@@ -315,6 +409,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _scannedImages.clear();
           _scannedImages.addAll(result.scannedImages);
           _extractedText = result.extractedText ?? '';
+          _barcodeValues = [];
+          _barcodeFormats = [];
         });
       } else {
         _showErrorSnackBar(
@@ -329,27 +425,42 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Initiates the business card scanning process
+  /// Initiates the barcode scanning process
   ///
   /// This method:
   /// 1. Shows a loading indicator
-  /// 2. Creates an output directory for saving scanned business cards
-  /// 3. Launches the business card scanner
-  /// 4. Processes the scan results, displaying the card image and extracted text
+  /// 2. Checks if barcode scanning is supported
+  /// 3. Launches the barcode scanner
+  /// 4. Processes the scan results, displaying barcode values and formats
   /// 5. Handles errors and cancellations
   ///
-  /// The business card scanner is optimized for the smaller format of business cards
-  /// and focuses on extracting contact information using OCR.
-  Future<void> _startBusinessCardScan() async {
+  /// The barcode scanner can detect multiple barcode formats including
+  /// QR codes, Code 128, EAN, UPC, and more.
+  Future<void> _startBarcodeScan() async {
     try {
       setState(() {
         _isLoading = true;
+        _currentScanMode = 'barcode';
       });
 
+      // Check if barcode scanning is supported
+      final isSupported = await AioScanner.isBarcodeScanningSupported();
+      if (!isSupported) {
+        setState(() {
+          _isLoading = false;
+        });
+        _showErrorSnackBar('Barcode scanning is not supported on this device');
+        return;
+      }
+
       // Call the plugin
-      ScanResult? result = await AioScanner.startBusinessCardScanning(
-        initialMessage: 'Position card in frame',
-        scanningMessage: 'Capturing...',
+      BarcodeScanResult? result = await AioScanner.startBarcodeScanning(
+        scanningMessage: 'Scanning...',
+        recognizedFormats: [
+          'qr',
+          'ean13',
+          'code128'
+        ],
       );
 
       setState(() {
@@ -359,9 +470,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (result != null && result.isSuccessful) {
         // Process scan result
         setState(() {
+          _barcodeValues = result.barcodeValues;
+          _barcodeFormats = result.barcodeFormats;
           _scannedImages.clear();
-          _scannedImages.addAll(result.scannedImages);
-          _extractedText = result.extractedText ?? '';
+          _extractedText = '';
         });
       } else {
         _showErrorSnackBar(

@@ -1,11 +1,11 @@
 # AIO Scanner Example App
 
-This example application demonstrates how to use the AIO Scanner Flutter plugin for document and business card scanning.
+This example application demonstrates how to use the AIO Scanner Flutter plugin for document and barcode scanning.
 
 ## Features Demonstrated
 
 - Document scanning with automatic edge detection
-- Business card scanning optimized for contact information
+- Barcode scanning for QR codes and various barcode formats
 - Text extraction (OCR) from scanned documents
 - Handling of permissions for Android and iOS
 - Displaying and using scan results
@@ -45,11 +45,11 @@ flutter run
 The example app provides a simple interface with two main features:
 
 1. **Document Scanner**: Scans multi-page documents with automatic edge detection
-2. **Business Card Scanner**: Specialized scanner optimized for business cards
+2. **Barcode Scanner**: Scans various barcode formats including QR codes
 
 After scanning, the app will display:
-- Thumbnails of the scanned images
-- The extracted text from the documents
+- For documents: Thumbnails of the scanned images and extracted text
+- For barcodes: The decoded barcode values and their formats
 
 ## Permissions
 

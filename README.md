@@ -13,15 +13,15 @@ and the Flutter guide for
 
 # AIO Scanner
 
-A powerful cross-platform document scanning package for Flutter that leverages native scanning capabilities:
+A powerful cross-platform document and barcode scanning package for Flutter that leverages native scanning capabilities:
 
-- **iOS**: Uses Apple's VisionKit for document scanning and text recognition
-- **Android**: Uses Google's ML Kit for document scanning and text recognition
+- **iOS**: Uses Apple's VisionKit for document and barcode scanning
+- **Android**: Uses Google's ML Kit for document and barcode scanning
 
 ## Features
 
 - 📝 **Document Scanning**: Automatic edge detection and perspective correction
-- 📇 **Business Card Scanning**: Optimized for capturing contact information
+- 🔍 **Barcode Scanning**: Support for QR codes, Code 128, EAN, UPC, and more
 - 📱 **Cross-platform Support**: Works seamlessly on iOS and Android
 - 🔍 **Text Recognition (OCR)**: Extract text from scanned documents
 - 📐 **Image Enhancement**: Automatic lighting and color correction
@@ -33,14 +33,14 @@ A powerful cross-platform document scanning package for Flutter that leverages n
 ## Demo
 
 ![Document Scanner Demo](https://github.com/troyvnit/aio_scanner/raw/main/demo/document_scanner.gif)
-![Business Card Scanner Demo](https://github.com/troyvnit/aio_scanner/raw/main/demo/business_card_scanner.gif)
+![Barcode Scanner Demo](https://github.com/troyvnit/aio_scanner/raw/main/demo/barcode_scanner.gif)
 
 _Note: Please replace the above placeholder URLs with your actual demo GIFs after uploading them to your repository._
 
 ## Requirements
 
 - Flutter SDK: ^3.7.2
-- iOS: 13.0 or higher (for VisionKit support)
+- iOS: 13.0 or higher (for VisionKit support), iOS 16.0+ for barcode scanning
 - Android: API level 21 or higher (for ML Kit support)
 - Xcode: 14.0 or higher (for iOS development)
 - Android Studio: Latest version (for Android development)
@@ -60,7 +60,7 @@ Add the following keys to your `ios/Runner/Info.plist` file:
 
 ```xml
 <key>NSCameraUsageDescription</key>
-<string>This app needs camera access to scan documents</string>
+<string>This app needs camera access to scan documents and barcodes</string>
 <key>NSPhotoLibraryUsageDescription</key>
 <string>This app needs photos access to save scanned documents</string>
 ```
@@ -87,6 +87,17 @@ For Android 12 and below, add:
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 ```
 
+Add ML Kit dependencies to your Android app:
+
+```xml
+<application ...>
+    <!-- ML Kit barcode model dependency -->
+    <meta-data
+        android:name="com.google.mlkit.vision.DEPENDENCIES"
+        android:value="barcode" />
+</application>
+```
+
 ## Usage
 
 ### Document Scanning
@@ -96,6 +107,12 @@ import 'package:aio_scanner/aio_scanner.dart';
 
 Future<void> scanDocument() async {
   try {
+    // Check if document scanning is supported
+    if (!await AioScanner.isDocumentScanningSupported()) {
+      print('Document scanning is not supported on this device');
+      return;
+    }
+
     // Start document scanning
     ScanResult? result = await AioScanner.startDocumentScanning(
       maxNumPages: 5,
@@ -121,32 +138,34 @@ Future<void> scanDocument() async {
 }
 ```
 
-### Business Card Scanning
+### Barcode Scanning
 
 ```dart
 import 'package:aio_scanner/aio_scanner.dart';
 
-Future<void> scanBusinessCard() async {
+Future<void> scanBarcode() async {
   try {
-    // Start business card scanning
-    ScanResult? result = await AioScanner.startBusinessCardScanning(
-      initialMessage: 'Position card in frame',
-      scanningMessage: 'Capturing...',
+    // Check if barcode scanning is supported
+    if (!await AioScanner.isBarcodeScanningSupported()) {
+      print('Barcode scanning is not supported on this device');
+      return;
+    }
+
+    // Start barcode scanning
+    BarcodeScanResult? result = await AioScanner.startBarcodeScanning(
+      recognizedFormats: ['qr', 'code128', 'ean13'],  // Empty list scans all formats
+      scanningMessage: 'Point camera at a barcode',
     );
 
     if (result != null && result.isSuccessful) {
-      // Access scanned image
-      final cardImage = result.scannedImages.first;
-
-      // Access extracted text
-      final contactInfo = result.extractedText;
-
-      // Process the results as needed
-      print('Business card scanned successfully');
-      print('Contact information: $contactInfo');
+      // Access barcode values
+      for (int i = 0; i < result.barcodeValues.length; i++) {
+        print('Barcode value: ${result.barcodeValues[i]}');
+        print('Format: ${result.barcodeFormats[i]}');
+      }
     }
   } catch (e) {
-    print('Error scanning business card: $e');
+    print('Error scanning barcode: $e');
   }
 }
 ```
@@ -203,7 +222,7 @@ Future<void> requestScannerPermissions() async {
 
 ### Complete Example
 
-Check out the `example` directory for a full working example that demonstrates both document and business card scanning features.
+Check out the `example` directory for a full working example that demonstrates both document and barcode scanning features.
 
 ## Configuration Options
 
@@ -214,22 +233,40 @@ The AIO Scanner plugin provides several configuration options:
 | Parameter            | Type     | Description                                    |
 | -------------------- | -------- | ---------------------------------------------- |
 | `outputDirectory`    | `String` | Directory where scanned images will be saved   |
-| `maxNumPages`        | `int`    | Maximum number of pages to scan (default: 1)   |
+| `maxNumPages`        | `int`    | Maximum number of pages to scan (default: 5)   |
 | `initialMessage`     | `String` | Message displayed before scanning starts       |
 | `scanningMessage`    | `String` | Message displayed during scanning              |
 | `allowGalleryImport` | `bool`   | Whether to allow importing images from gallery |
 
-### Business Card Scanning Options
+### Barcode Scanning Options
 
-| Parameter         | Type     | Description                                |
-| ----------------- | -------- | ------------------------------------------ |
-| `outputDirectory` | `String` | Directory where scanned card will be saved |
-| `initialMessage`  | `String` | Message displayed before scanning starts   |
-| `scanningMessage` | `String` | Message displayed during scanning          |
+| Parameter           | Type           | Description                                |
+| ------------------- | -------------- | ------------------------------------------ |
+| `outputDirectory`   | `String`       | Directory where screenshot will be saved   |
+| `recognizedFormats` | `List<String>` | List of barcode formats to recognize       |
+| `scanningMessage`   | `String`       | Message displayed during scanning          |
 
-## Scan Result
+#### Supported Barcode Formats
 
-The `ScanResult` object provides access to the scanning results:
+| Format       | Description                     |
+| ------------ | ------------------------------- |
+| `qr`         | QR Code                         |
+| `code128`    | Code 128 barcode                |
+| `code39`     | Code 39 barcode                 |
+| `code93`     | Code 93 barcode                 |
+| `ean8`       | EAN-8 barcode                   |
+| `ean13`      | EAN-13 barcode (includes UPC-A) |
+| `upc`        | UPC barcode (UPC-A and UPC-E)   |
+| `pdf417`     | PDF417 barcode                  |
+| `aztec`      | Aztec barcode                   |
+| `datamatrix` | Data Matrix barcode             |
+| `itf`        | ITF barcode                     |
+
+## Scan Results
+
+### Document Scan Result
+
+The `ScanResult` object provides access to the document scanning results:
 
 | Property        | Type         | Description                                                   |
 | --------------- | ------------ | ------------------------------------------------------------- |
@@ -238,15 +275,30 @@ The `ScanResult` object provides access to the scanning results:
 | `extractedText` | `String?`    | Text extracted from the scanned images (if OCR was performed) |
 | `errorMessage`  | `String?`    | Error message if the scan failed                              |
 
+### Barcode Scan Result
+
+The `BarcodeScanResult` object provides access to the barcode scanning results:
+
+| Property         | Type           | Description                        |
+| ---------------- | -------------- | ---------------------------------- |
+| `isSuccessful`   | `bool`         | Whether the scan was successful    |
+| `barcodeValues`  | `List<String>` | List of decoded barcode values     |
+| `barcodeFormats` | `List<String>` | List of recognized barcode formats |
+| `errorMessage`   | `String?`      | Error message if the scan failed   |
+
 ## Platform-specific Implementation Details
 
 ### iOS Implementation
 
-On iOS, the plugin uses Apple's VisionKit framework for document scanning, which provides built-in edge detection, perspective correction, and image enhancement. Text recognition is performed using the Vision framework.
+- **Document Scanning**: Uses Apple's VisionKit `VNDocumentCameraViewController` for document scanning.
+- **Barcode Scanning**: Uses VisionKit's `DataScannerViewController` for barcode scanning (iOS 16.0+).
+- **Text Recognition**: Uses the Vision framework for OCR.
 
 ### Android Implementation
 
-On Android, the plugin uses Google's ML Kit Document Scanner API for document scanning and ML Kit Text Recognition API for OCR. These provide similar capabilities to the iOS implementation, ensuring a consistent experience across platforms.
+- **Document Scanning**: Uses Google's ML Kit Document Scanner API for document scanning.
+- **Barcode Scanning**: Uses ML Kit's Barcode Scanning API for barcode detection.
+- **Text Recognition**: Uses ML Kit Text Recognition API for OCR.
 
 ## Troubleshooting
 
