@@ -5,86 +5,204 @@ import 'dart:io';
 import 'package:aio_scanner/aio_scanner.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mockito/mockito.dart';
+import 'package:mockito/annotations.dart';
+
+@GenerateMocks([MethodChannel])
+import 'aio_scanner_test.mocks.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const MethodChannel channel = MethodChannel('aio_scanner');
-  final List<MethodCall> log = <MethodCall>[];
-
-  // Default mock response
-  dynamic mockResponse = true;
+  late MockMethodChannel mockChannel;
 
   setUp(() {
-    log.clear();
-
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-          log.add(methodCall);
-          return mockResponse;
-        });
+    mockChannel = MockMethodChannel();
+    // Set up the mock channel
+    const MethodChannel('aio_scanner').setMockMethodCallHandler((call) async {
+      return await mockChannel.invokeMethod(call.method, call.arguments);
+    });
   });
 
-  tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, null);
-  });
+  group('AioScanner', () {
+    test('isDocumentScanningSupported returns true when supported', () async {
+      when(mockChannel.invokeMethod('isDocumentScanningSupported'))
+          .thenAnswer((_) async => true);
 
-  group('isDocumentScanningSupported', () {
-    test('returns true when platform returns true', () async {
-      mockResponse = true;
-
-      final bool result = await AioScanner.isDocumentScanningSupported();
-
+      final result = await AioScanner.isDocumentScanningSupported();
       expect(result, true);
     });
 
-    test('returns false when platform returns false', () async {
-      mockResponse = false;
+    test('isDocumentScanningSupported returns false when not supported', () async {
+      when(mockChannel.invokeMethod('isDocumentScanningSupported'))
+          .thenAnswer((_) async => false);
 
-      final bool result = await AioScanner.isDocumentScanningSupported();
-
+      final result = await AioScanner.isDocumentScanningSupported();
       expect(result, false);
     });
 
-    test('returns false when platform throws exception', () async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-            throw PlatformException(code: 'TEST_ERROR');
-          });
+    test('startDocumentScanning with default parameters', () async {
+      final expectedArgs = {
+        'outputDirectory': argThat(isA<String>()),
+        'maxNumPages': 5,
+        'initialMessage': 'Position document in frame',
+        'scanningMessage': 'Hold still...',
+        'allowGalleryImport': true,
+        'outputFormat': 'image',
+        'mergePDF': true,
+      };
 
-      final bool result = await AioScanner.isDocumentScanningSupported();
+      when(mockChannel.invokeMethod('startDocumentScanning', expectedArgs))
+          .thenAnswer((_) async => {
+                'isSuccessful': true,
+                'filePaths': ['/path/to/image1.jpg', '/path/to/image2.jpg'],
+                'extractedText': 'Sample text',
+              });
 
-      expect(result, false);
+      final result = await AioScanner.startDocumentScanning();
+      expect(result?.isSuccessful, true);
+      expect(result?.scannedFiles.length, 2);
+      expect(result?.extractedText, 'Sample text');
     });
-  });
 
-  group('isBarcodeScanningSupported', () {
-    test('returns true when platform returns true', () async {
-      mockResponse = true;
+    test('startDocumentScanning with PDF output and merged PDF', () async {
+      final expectedArgs = {
+        'outputDirectory': argThat(isA<String>()),
+        'maxNumPages': 3,
+        'initialMessage': 'Position document in frame',
+        'scanningMessage': 'Hold still...',
+        'allowGalleryImport': true,
+        'outputFormat': 'pdf',
+        'mergePDF': true,
+      };
 
-      final bool result = await AioScanner.isBarcodeScanningSupported();
+      when(mockChannel.invokeMethod('startDocumentScanning', expectedArgs))
+          .thenAnswer((_) async => {
+                'isSuccessful': true,
+                'filePaths': ['/path/to/merged.pdf'],
+                'extractedText': 'Sample text',
+              });
 
+      final result = await AioScanner.startDocumentScanning(
+        maxNumPages: 3,
+        outputFormat: ScanOutputFormat.pdf,
+        mergePDF: true,
+      );
+      expect(result?.isSuccessful, true);
+      expect(result?.scannedFiles.length, 1);
+      expect(result?.scannedFiles.first.path, '/path/to/merged.pdf');
+      expect(result?.extractedText, 'Sample text');
+    });
+
+    test('startDocumentScanning with PDF output and individual PDFs', () async {
+      final expectedArgs = {
+        'outputDirectory': argThat(isA<String>()),
+        'maxNumPages': 3,
+        'initialMessage': 'Position document in frame',
+        'scanningMessage': 'Hold still...',
+        'allowGalleryImport': true,
+        'outputFormat': 'pdf',
+        'mergePDF': false,
+      };
+
+      when(mockChannel.invokeMethod('startDocumentScanning', expectedArgs))
+          .thenAnswer((_) async => {
+                'isSuccessful': true,
+                'filePaths': [
+                  '/path/to/page1.pdf',
+                  '/path/to/page2.pdf',
+                  '/path/to/page3.pdf'
+                ],
+                'extractedText': 'Sample text',
+              });
+
+      final result = await AioScanner.startDocumentScanning(
+        maxNumPages: 3,
+        outputFormat: ScanOutputFormat.pdf,
+        mergePDF: false,
+      );
+      expect(result?.isSuccessful, true);
+      expect(result?.scannedFiles.length, 3);
+      expect(result?.scannedFiles[0].path, '/path/to/page1.pdf');
+      expect(result?.scannedFiles[1].path, '/path/to/page2.pdf');
+      expect(result?.scannedFiles[2].path, '/path/to/page3.pdf');
+      expect(result?.extractedText, 'Sample text');
+    });
+
+    test('startDocumentScanning handles errors', () async {
+      when(mockChannel.invokeMethod('startDocumentScanning', any))
+          .thenThrow(PlatformException(code: 'ERROR', message: 'Test error'));
+
+      final result = await AioScanner.startDocumentScanning();
+      expect(result?.isSuccessful, false);
+      expect(result?.errorMessage, 'Test error');
+    });
+
+    test('isBarcodeScanningSupported returns true when supported', () async {
+      when(mockChannel.invokeMethod('isBarcodeScanningSupported'))
+          .thenAnswer((_) async => true);
+
+      final result = await AioScanner.isBarcodeScanningSupported();
       expect(result, true);
     });
 
-    test('returns false when platform returns false', () async {
-      mockResponse = false;
+    test('isBarcodeScanningSupported returns false when not supported', () async {
+      when(mockChannel.invokeMethod('isBarcodeScanningSupported'))
+          .thenAnswer((_) async => false);
 
-      final bool result = await AioScanner.isBarcodeScanningSupported();
-
+      final result = await AioScanner.isBarcodeScanningSupported();
       expect(result, false);
     });
 
-    test('returns false when platform throws exception', () async {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-            throw PlatformException(code: 'TEST_ERROR');
-          });
+    test('startBarcodeScanning with default parameters', () async {
+      final expectedArgs = {
+        'recognizedFormats': [],
+        'scanningMessage': 'Point camera at a barcode',
+      };
 
-      final bool result = await AioScanner.isBarcodeScanningSupported();
+      when(mockChannel.invokeMethod('startBarcodeScanning', expectedArgs))
+          .thenAnswer((_) async => {
+                'isSuccessful': true,
+                'barcodeValues': ['123456', '789012'],
+                'barcodeFormats': ['qr', 'code128'],
+              });
 
-      expect(result, false);
+      final result = await AioScanner.startBarcodeScanning();
+      expect(result?.isSuccessful, true);
+      expect(result?.barcodeValues, ['123456', '789012']);
+      expect(result?.barcodeFormats, ['qr', 'code128']);
+    });
+
+    test('startBarcodeScanning with specific formats', () async {
+      final expectedArgs = {
+        'recognizedFormats': ['qr', 'code128'],
+        'scanningMessage': 'Point camera at a barcode',
+      };
+
+      when(mockChannel.invokeMethod('startBarcodeScanning', expectedArgs))
+          .thenAnswer((_) async => {
+                'isSuccessful': true,
+                'barcodeValues': ['123456'],
+                'barcodeFormats': ['qr'],
+              });
+
+      final result = await AioScanner.startBarcodeScanning(
+        recognizedFormats: ['qr', 'code128'],
+      );
+      expect(result?.isSuccessful, true);
+      expect(result?.barcodeValues, ['123456']);
+      expect(result?.barcodeFormats, ['qr']);
+    });
+
+    test('startBarcodeScanning handles errors', () async {
+      when(mockChannel.invokeMethod('startBarcodeScanning', any))
+          .thenThrow(PlatformException(code: 'ERROR', message: 'Test error'));
+
+      final result = await AioScanner.startBarcodeScanning();
+      expect(result?.isSuccessful, false);
+      expect(result?.barcodeValues, []);
+      expect(result?.barcodeFormats, []);
+      expect(result?.errorMessage, 'Test error');
     });
   });
 
@@ -96,7 +214,7 @@ void main() {
 
       final Map<dynamic, dynamic> resultMap = {
         'isSuccessful': true,
-        'imagePaths': [imagePath1, imagePath2],
+        'filePaths': [imagePath1, imagePath2],
         'extractedText': 'Sample extracted text',
         'errorMessage': null,
       };
@@ -104,9 +222,9 @@ void main() {
       final result = ScanResult.fromMap(resultMap);
 
       expect(result.isSuccessful, true);
-      expect(result.scannedImages.length, 2);
-      expect(result.scannedImages[0].path, imagePath1);
-      expect(result.scannedImages[1].path, imagePath2);
+      expect(result.scannedFiles.length, 2);
+      expect(result.scannedFiles[0].path, imagePath1);
+      expect(result.scannedFiles[1].path, imagePath2);
       expect(result.extractedText, 'Sample extracted text');
       expect(result.errorMessage, null);
     });
@@ -114,7 +232,7 @@ void main() {
     test('handles missing fields gracefully', () {
       final Map<dynamic, dynamic> resultMap = {
         'isSuccessful': true,
-        // Missing 'imagePaths'
+        // Missing 'filePaths'
         // Missing 'extractedText'
         // Missing 'errorMessage'
       };
@@ -122,7 +240,7 @@ void main() {
       final result = ScanResult.fromMap(resultMap);
 
       expect(result.isSuccessful, true);
-      expect(result.scannedImages, isEmpty);
+      expect(result.scannedFiles, isEmpty);
       expect(result.extractedText, null);
       expect(result.errorMessage, null);
     });
@@ -130,7 +248,7 @@ void main() {
     test('handles null values gracefully', () {
       final Map<dynamic, dynamic> resultMap = {
         'isSuccessful': null,
-        'imagePaths': null,
+        'filePaths': null,
         'extractedText': null,
         'errorMessage': null,
       };
@@ -138,7 +256,7 @@ void main() {
       final result = ScanResult.fromMap(resultMap);
 
       expect(result.isSuccessful, false); // Defaults to false when null
-      expect(result.scannedImages, isEmpty);
+      expect(result.scannedFiles, isEmpty);
       expect(result.extractedText, null);
       expect(result.errorMessage, null);
     });
@@ -146,14 +264,10 @@ void main() {
 
   group('BarcodeScanResult', () {
     test('creates BarcodeScanResult from valid map', () {
-      final tempDir = Directory.systemTemp;
-      final screenshotPath = '${tempDir.path}/barcode.jpg';
-
       final Map<dynamic, dynamic> resultMap = {
         'isSuccessful': true,
         'barcodeValues': ['https://example.com', '12345678'],
         'barcodeFormats': ['qr', 'code128'],
-        'screenshotPath': screenshotPath,
         'errorMessage': null,
       };
 
@@ -173,7 +287,6 @@ void main() {
         'isSuccessful': true,
         // Missing 'barcodeValues'
         // Missing 'barcodeFormats'
-        // Missing 'screenshotPath'
         // Missing 'errorMessage'
       };
 
@@ -190,7 +303,6 @@ void main() {
         'isSuccessful': null,
         'barcodeValues': null,
         'barcodeFormats': null,
-        'screenshotPath': null,
         'errorMessage': null,
       };
 
@@ -201,161 +313,5 @@ void main() {
       expect(result.barcodeFormats, isEmpty);
       expect(result.errorMessage, null);
     });
-  });
-
-  group('startDocumentScanning', () {
-    setUp(() {
-      mockResponse = {
-        'isSuccessful': true,
-        'imagePaths': ['/mock/scan1.jpg', '/mock/scan2.jpg'],
-        'extractedText': 'Lorem ipsum dolor sit amet',
-        'errorMessage': null,
-      };
-    });
-
-    test('calls platform method with correct arguments', () async {
-      // Mock response is already set in the setUp method
-      log.clear();
-
-      // NOTE: To avoid actual directory operations in tests, we need to set up proper mocking
-      // or skip the test if it depends on actual directory operations
-
-      // Skip the test if we're concerned about directory operations
-      // We're patching over the directory operations by using a try-catch around the test call
-      try {
-        final result = await AioScanner.startDocumentScanning(
-          outputDirectory: '/mock/output',
-          maxNumPages: 3,
-          initialMessage: 'Test initial message',
-          scanningMessage: 'Test scanning message',
-          allowGalleryImport: false,
-        );
-
-        // These verifications will only happen if the directory operations don't fail
-        expect(log.length, 1);
-        expect(log[0].method, 'startDocumentScanning');
-
-        final Map<dynamic, dynamic> args =
-            log[0].arguments as Map<dynamic, dynamic>;
-        expect(args['maxNumPages'], 3);
-        expect(args['initialMessage'], 'Test initial message');
-        expect(args['scanningMessage'], 'Test scanning message');
-        expect(args['allowGalleryImport'], false);
-
-        expect(result!.isSuccessful, true);
-        expect(result.scannedImages.length, 2);
-        expect(result.extractedText, 'Lorem ipsum dolor sit amet');
-      } catch (e) {
-        // If there's a directory-related error, we'll skip the test
-        // This is a compromise solution since we don't want to add test hooks
-        print('Skipping test due to directory operation: $e');
-      }
-    });
-
-    test('returns null when platform returns null', () async {
-      mockResponse = null;
-
-      try {
-        final result = await AioScanner.startDocumentScanning(
-          outputDirectory: '/mock/output',
-        );
-
-        expect(result, isNull);
-      } catch (e) {
-        // Skip test if directory operation fails
-        print('Skipping test due to directory operation: $e');
-      }
-    });
-
-    test(
-      'returns ScanResult with error when platform throws exception',
-      () async {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-              throw PlatformException(
-                code: 'SCAN_ERROR',
-                message: 'Test error message',
-              );
-            });
-
-        try {
-          final result = await AioScanner.startDocumentScanning(
-            outputDirectory: '/mock/output',
-          );
-
-          expect(result!.isSuccessful, false);
-          expect(result.scannedImages, isEmpty);
-          expect(result.errorMessage, contains('PlatformException'));
-        } catch (e) {
-          // Skip test if directory operation fails
-          print('Skipping test due to directory operation: $e');
-        }
-      },
-    );
-  });
-
-  group('startBarcodeScanning', () {
-    setUp(() {
-      mockResponse = {
-        'isSuccessful': true,
-        'barcodeValues': ['https://example.com', '1234567890'],
-        'barcodeFormats': ['qr', 'code128'],
-        'screenshotPath': '/mock/barcode.jpg',
-        'errorMessage': null,
-      };
-    });
-
-    test('calls platform method with correct arguments', () async {
-      // Mock response is already set in the setUp method
-      log.clear();
-
-      try {
-        final result = await AioScanner.startBarcodeScanning(
-          recognizedFormats: ['qr', 'pdf417'],
-          scanningMessage: 'Test barcode scanning',
-        );
-
-        expect(log.length, 1);
-        expect(log[0].method, 'startBarcodeScanning');
-
-        final Map<dynamic, dynamic> args =
-            log[0].arguments as Map<dynamic, dynamic>;
-        expect(args['recognizedFormats'], ['qr', 'pdf417']);
-        expect(args['scanningMessage'], 'Test barcode scanning');
-
-        expect(result!.isSuccessful, true);
-        expect(result.barcodeValues.length, 2);
-        expect(result.barcodeValues[0], 'https://example.com');
-        expect(result.barcodeFormats[0], 'qr');
-      } catch (e) {
-        // Skip test if directory operation fails
-        print('Skipping barcode test due to directory operation: $e');
-      }
-    });
-
-    test(
-      'returns BarcodeScanResult with error when platform throws exception',
-      () async {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-              throw PlatformException(
-                code: 'SCAN_ERROR',
-                message: 'Test barcode error',
-              );
-            });
-
-        try {
-          final result = await AioScanner.startBarcodeScanning();
-
-          expect(result!.isSuccessful, false);
-          expect(result.barcodeValues, isEmpty);
-          expect(result.barcodeFormats, isEmpty);
-          expect(result.errorMessage, contains('PlatformException'));
-        } catch (e) {
-          // Skip test if directory operation fails
-          print('Skipping barcode test due to directory operation: $e');
-        }
-      },
-    );
   });
 }

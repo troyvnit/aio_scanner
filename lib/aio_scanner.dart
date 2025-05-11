@@ -10,24 +10,36 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+/// Output format for scanned documents
+enum ScanOutputFormat {
+  /// Save scanned pages as individual image files
+  image,
+  
+  /// Save scanned pages as PDF files
+  pdf
+}
+
 /// Result of a document scanning operation
 ///
 /// This class encapsulates all data returned from a scanning session,
-/// including success status, scanned images, extracted text, and any error messages.
+/// including success status, scanned files, extracted text, and any error messages.
 /// It provides a convenient way to handle and process scan results in the application.
 class ScanResult {
   /// Whether the scan was successfully completed.
   ///
   /// A value of `true` indicates that the scanning process completed without errors
-  /// and images were captured. A value of `false` indicates that an error occurred
+  /// and files were captured. A value of `false` indicates that an error occurred
   /// or the user cancelled the scanning process.
   final bool isSuccessful;
 
-  /// List of captured document images as [File] objects.
+  /// List of captured document files as [File] objects.
   ///
-  /// Each file represents a page of the scanned document.
+  /// Each file represents either:
+  /// - A page of the scanned document (when output format is image)
+  /// - A single PDF file containing all pages (when output format is pdf and mergePDF is true)
+  /// - Individual PDF files for each page (when output format is pdf and mergePDF is false)
   /// The files are stored in the output directory specified when starting the scan.
-  final List<File> scannedImages;
+  final List<File> scannedFiles;
 
   /// Text extracted from the scanned document using OCR.
   ///
@@ -44,12 +56,12 @@ class ScanResult {
   /// Creates a new [ScanResult] instance.
   ///
   /// [isSuccessful] indicates whether the scan completed successfully.
-  /// [scannedImages] contains the list of captured image files.
+  /// [scannedFiles] contains the list of captured files.
   /// [extractedText] contains the recognized text from the document (optional).
   /// [errorMessage] provides error details if the scan failed (optional).
   ScanResult({
     required this.isSuccessful,
-    required this.scannedImages,
+    required this.scannedFiles,
     this.extractedText,
     this.errorMessage,
   });
@@ -57,21 +69,21 @@ class ScanResult {
   /// Creates a [ScanResult] from a map returned by the platform channel.
   ///
   /// This factory constructor handles the conversion from the raw platform data
-  /// to a strongly-typed Dart object. It processes the image paths from the native
+  /// to a strongly-typed Dart object. It processes the file paths from the native
   /// implementation and converts them to [File] objects.
   ///
   /// [map] is the raw data map returned from the platform-specific implementation.
   factory ScanResult.fromMap(Map<dynamic, dynamic> map) {
-    final List<File> images = [];
-    if (map['imagePaths'] != null) {
-      for (String path in map['imagePaths']) {
-        images.add(File(path));
+    final List<File> files = [];
+    if (map['filePaths'] != null) {
+      for (String path in map['filePaths']) {
+        files.add(File(path));
       }
     }
 
     return ScanResult(
       isSuccessful: map['isSuccessful'] ?? false,
-      scannedImages: images,
+      scannedFiles: files,
       extractedText: map['extractedText'],
       errorMessage: map['errorMessage'],
     );
@@ -204,18 +216,20 @@ class AioScanner {
   /// Starts the document scanning process.
   ///
   /// This method launches the native document scanner UI, allowing the user to
-  /// capture document pages. The captured images are saved to the specified
+  /// capture document pages. The captured files are saved to the specified
   /// output directory, and text is extracted from the images using OCR.
   ///
   /// Parameters:
-  /// - [outputDirectory]: Directory where scanned images will be saved. This directory
+  /// - [outputDirectory]: Directory where scanned files will be saved. This directory
   ///   will be created if it doesn't exist.
   /// - [maxNumPages]: Maximum number of pages to scan (default: 5, 0 = unlimited)
   /// - [initialMessage]: Message to display when scanning starts (platform-specific)
   /// - [scanningMessage]: Message to display during scanning (platform-specific)
   /// - [allowGalleryImport]: Whether to allow importing images from the device gallery
+  /// - [outputFormat]: The format to save the scanned documents in (default: image)
+  /// - [mergePDF]: Whether to merge all pages into a single PDF when output format is PDF (default: true)
   ///
-  /// Returns a [ScanResult] object containing the scan status, captured images,
+  /// Returns a [ScanResult] object containing the scan status, captured files,
   /// and extracted text. Returns `null` if the scan could not be started.
   ///
   /// Example usage:
@@ -223,11 +237,13 @@ class AioScanner {
   /// final result = await AioScanner.startDocumentScanning(
   ///   outputDirectory: 'scanned_documents',
   ///   maxNumPages: 3,
+  ///   outputFormat: ScanOutputFormat.pdf,
+  ///   mergePDF: false, // Generate separate PDFs for each page
   /// );
   ///
   /// if (result?.isSuccessful == true) {
-  ///   for (var image in result!.scannedImages) {
-  ///     // Process each image
+  ///   for (var file in result!.scannedFiles) {
+  ///     // Process each file
   ///   }
   ///   if (result.extractedText != null) {
   ///     // Use the extracted text
@@ -240,6 +256,8 @@ class AioScanner {
     String initialMessage = 'Position document in frame',
     String scanningMessage = 'Hold still...',
     bool allowGalleryImport = true,
+    ScanOutputFormat outputFormat = ScanOutputFormat.image,
+    bool mergePDF = true,
   }) async {
     try {
       final documentsDirectory = await getApplicationDocumentsDirectory();
@@ -264,6 +282,8 @@ class AioScanner {
         'initialMessage': initialMessage,
         'scanningMessage': scanningMessage,
         'allowGalleryImport': allowGalleryImport,
+        'outputFormat': outputFormat == ScanOutputFormat.pdf ? 'pdf' : 'image',
+        'mergePDF': mergePDF,
       };
 
       final result = await _channel.invokeMethod('startDocumentScanning', args);
@@ -274,7 +294,7 @@ class AioScanner {
     } catch (e) {
       return ScanResult(
         isSuccessful: false,
-        scannedImages: [],
+        scannedFiles: [],
         errorMessage: e.toString(),
       );
     }

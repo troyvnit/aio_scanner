@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -430,7 +431,7 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
     }
 
     /**
-     * Processes the document scanning result, including saving images and extracting text.
+     * Processes the document scanning result, including saving images, extracting text, and generating PDF.
      * 
      * This method:
      * 1. Creates the output directory if needed
@@ -438,8 +439,9 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
      *    - Converts the image URI to a bitmap
      *    - Saves the image to the output directory
      *    - Extracts text from the image using OCR
-     * 3. Returns the results to Flutter with:
-     *    - The paths to saved images
+     * 3. Generates PDF(s) from the scanned pages if requested
+     * 4. Returns the results to Flutter with:
+     *    - The paths to saved images or PDF(s)
      *    - Extracted text from all pages
      * 
      * @param scanningResult The result object from ML Kit document scanner containing
@@ -467,6 +469,7 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
 
             val imagePaths = mutableListOf<String>()
             var allText = ""
+            val bitmaps = mutableListOf<Bitmap>()
 
             // Process each page - use safe call (?.) and elvis operator (?:) to safely handle nullable list
             pages?.forEach { page ->
@@ -480,6 +483,7 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
                 saveBitmapToFile(bitmap, imageFile)
                 
                 imagePaths.add(imageFile.absolutePath)
+                bitmaps.add(bitmap)
                 
                 // Extract text
                 val pageText = extractTextFromBitmap(bitmap)
@@ -489,25 +493,47 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
                     }
                     allText += pageText
                 }
-            } ?: run {
-                // This should not happen due to our earlier check, but just to be safe
-                mainHandler.post {
-                    pendingResult?.success(mapOf(
-                        "isSuccessful" to false,
-                        "errorMessage" to "Pages list was unexpectedly null"
-                    ))
-                    pendingResult = null
-                }
-                return
             }
-
+            
+            // Check if PDF output was requested
+            val outputFormat = currentScanArgs?.get("outputFormat") as? String
+            val shouldGeneratePDF = outputFormat == "pdf"
+            val shouldMergePDF = currentScanArgs?.get("mergePDF") as? Boolean ?: true
+            
             // Return the result to Flutter
             mainHandler.post {
-                pendingResult?.success(mapOf(
+                val result = mutableMapOf(
                     "isSuccessful" to true,
-                    "imagePaths" to imagePaths,
                     "extractedText" to allText
-                ))
+                )
+                
+                if (shouldGeneratePDF) {
+                    if (shouldMergePDF) {
+                        // Generate single PDF with all pages
+                        val pdfPath = generatePDF(bitmaps, outputDir)
+                        if (pdfPath != null) {
+                            result["imagePaths"] = listOf(pdfPath)
+                        } else {
+                            result["imagePaths"] = imagePaths
+                        }
+                    } else {
+                        // Generate individual PDFs for each page
+                        val pdfPaths = bitmaps.mapIndexed { index, bitmap ->
+                            generateSinglePagePDF(bitmap, outputDir, index)
+                        }.filterNotNull()
+                        
+                        if (pdfPaths.isNotEmpty()) {
+                            result["imagePaths"] = pdfPaths
+                        } else {
+                            result["imagePaths"] = imagePaths
+                        }
+                    }
+                } else {
+                    // Return individual image paths
+                    result["imagePaths"] = imagePaths
+                }
+                
+                pendingResult?.success(result)
                 pendingResult = null
             }
         } catch (e: Exception) {
@@ -515,6 +541,83 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
                 pendingResult?.error("PROCESSING_ERROR", "Error processing scan result: ${e.message}", null)
                 pendingResult = null
             }
+        }
+    }
+    
+    /**
+     * Generates a single-page PDF from a bitmap.
+     * 
+     * @param bitmap The bitmap to convert to PDF.
+     * @param outputDir Directory where the PDF will be saved.
+     * @param pageIndex Index of the page for the filename.
+     * @return The path to the generated PDF file, or null if generation failed.
+     */
+    private fun generateSinglePagePDF(bitmap: Bitmap, outputDir: File, pageIndex: Int): String? {
+        try {
+            val pdfDocument = PdfDocument()
+            val timestamp = System.currentTimeMillis()
+            val pdfFile = File(outputDir, "scan_${timestamp}_${pageIndex}.pdf")
+            
+            val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, 0).create()
+            val page = pdfDocument.startPage(pageInfo)
+            val canvas = page.canvas
+            
+            // Draw the bitmap on the canvas
+            canvas.drawBitmap(bitmap, 0f, 0f, null)
+            
+            pdfDocument.finishPage(page)
+            
+            // Write the PDF to a file
+            FileOutputStream(pdfFile).use { out ->
+                pdfDocument.writeTo(out)
+            }
+            
+            pdfDocument.close()
+            return pdfFile.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
+    
+    /**
+     * Generates a PDF document from an array of bitmaps.
+     * 
+     * This method creates a PDF document containing all the provided bitmaps,
+     * with each bitmap on a separate page. The PDF is saved to the specified
+     * output directory with a timestamp-based filename.
+     * 
+     * @param bitmaps List of Bitmap objects to include in the PDF.
+     * @param outputDir Directory where the PDF will be saved.
+     * @return The path to the generated PDF file, or null if generation failed.
+     */
+    private fun generatePDF(bitmaps: List<Bitmap>, outputDir: File): String? {
+        try {
+            val pdfDocument = PdfDocument()
+            val timestamp = System.currentTimeMillis()
+            val pdfFile = File(outputDir, "scan_${timestamp}.pdf")
+            
+            for (bitmap in bitmaps) {
+                val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, bitmaps.indexOf(bitmap)).create()
+                val page = pdfDocument.startPage(pageInfo)
+                val canvas = page.canvas
+                
+                // Draw the bitmap on the canvas
+                canvas.drawBitmap(bitmap, 0f, 0f, null)
+                
+                pdfDocument.finishPage(page)
+            }
+            
+            // Write the PDF to a file
+            FileOutputStream(pdfFile).use { out ->
+                pdfDocument.writeTo(out)
+            }
+            
+            pdfDocument.close()
+            return pdfFile.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
         }
     }
     

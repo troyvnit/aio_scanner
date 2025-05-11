@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import VisionKit
 import Vision
+import PDFKit
 
 /**
  * AioScannerPlugin
@@ -15,6 +16,7 @@ import Vision
  * - Barcode scanning for QR codes, UPC, EAN, and other formats
  * - Optical Character Recognition (OCR) for text extraction
  * - Image saving with configurable output location
+ * - PDF generation from scanned documents
  * 
  * The implementation leverages Apple's VisionKit framework for the scanning UI and the Vision
  * framework for text recognition, providing a seamless native experience within Flutter apps.
@@ -332,7 +334,8 @@ import Vision
      * document by:
      * 1. Saving each scanned image to the specified output directory
      * 2. Performing text recognition on each image sequentially
-     * 3. Returning the paths to the saved images and any extracted text
+     * 3. Generating PDF(s) from the scanned images if requested
+     * 4. Returning the paths to the saved images or PDF(s)
      *
      * The final result is delivered back to Flutter via the saved result callback.
      *
@@ -360,6 +363,7 @@ import Vision
             // Save the scanned images
             var imagePaths: [String] = []
             var allText = ""
+            var images: [UIImage] = []
             
             for i in 0..<scan.pageCount {
                 let image = scan.imageOfPage(at: i)
@@ -370,6 +374,7 @@ import Vision
                     do {
                         try imageData.write(to: URL(fileURLWithPath: imagePath))
                         imagePaths.append(imagePath)
+                        images.append(image)
                         
                         // Try to recognize text in the image
                         self.recognizeText(in: image) { text in
@@ -380,10 +385,45 @@ import Vision
                                 allText += text
                             }
                             
-                            // If this is the last image, return the result
+                            // If this is the last image, generate PDF if requested and return the result
                             if i == scan.pageCount - 1 {
+                                // Check if PDF output was requested
+                                let outputFormat = self.scanArgs?["outputFormat"] as? String
+                                let shouldGeneratePDF = outputFormat == "pdf"
+                                let shouldMergePDF = self.scanArgs?["mergePDF"] as? Bool ?? true
+                                
                                 DispatchQueue.main.async {
-                                    self.documentScanResult?(["isSuccessful": true, "imagePaths": imagePaths, "extractedText": allText])
+                                    var result: [String: Any] = [
+                                        "isSuccessful": true,
+                                        "extractedText": allText
+                                    ]
+                                    
+                                    if shouldGeneratePDF {
+                                        if shouldMergePDF {
+                                            // Generate single PDF with all pages
+                                            if let pdfPath = self.generatePDF(from: images, outputDirectory: outputDir) {
+                                                result["filePaths"] = [pdfPath]
+                                            } else {
+                                                result["filePaths"] = imagePaths
+                                            }
+                                        } else {
+                                            // Generate individual PDFs for each page
+                                            let pdfPaths = images.enumerated().compactMap { index, image in
+                                                self.generateSinglePagePDF(from: image, outputDirectory: outputDir, pageIndex: index)
+                                            }
+                                            
+                                            if !pdfPaths.isEmpty {
+                                                result["filePaths"] = pdfPaths
+                                            } else {
+                                                result["filePaths"] = imagePaths
+                                            }
+                                        }
+                                    } else {
+                                        // Return individual image paths
+                                        result["filePaths"] = imagePaths
+                                    }
+                                    
+                                    self.documentScanResult?(result)
                                     self.documentScanResult = nil
                                 }
                             }
@@ -622,6 +662,65 @@ import Vision
             #endif
             completion(nil)
         }
+    }
+    
+    /**
+     * Generates a PDF document from an array of images.
+     *
+     * This method creates a PDF document containing all the provided images,
+     * with each image on a separate page. The PDF is saved to the specified
+     * output directory with a timestamp-based filename.
+     *
+     * - Parameters:
+     *   - images: Array of UIImage objects to include in the PDF.
+     *   - outputDirectory: Directory path where the PDF will be saved.
+     * - Returns: The path to the generated PDF file, or nil if generation failed.
+     */
+    private func generatePDF(from images: [UIImage], outputDirectory: String) -> String? {
+        let pdfDocument = PDFDocument()
+        let timestamp = Date().timeIntervalSince1970
+        let pdfPath = "\(outputDirectory)/scan_\(timestamp).pdf"
+        
+        for (index, image) in images.enumerated() {
+            if let pdfPage = PDFPage(image: image) {
+                pdfDocument.insert(pdfPage, at: index)
+            }
+        }
+        
+        do {
+            try pdfDocument.write(to: URL(fileURLWithPath: pdfPath))
+            return pdfPath
+        } catch {
+            print("Failed to generate PDF: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    /**
+     * Generates a single-page PDF from a UIImage.
+     *
+     * - Parameters:
+     *   - image: The UIImage to convert to PDF.
+     *   - outputDirectory: Directory where the PDF will be saved.
+     *   - pageIndex: Index of the page for the filename.
+     * - Returns: The path to the generated PDF file, or nil if generation failed.
+     */
+    private func generateSinglePagePDF(from image: UIImage, outputDirectory: String, pageIndex: Int) -> String? {
+        let pdfPath = "\(outputDirectory)/scan_\(Date().timeIntervalSince1970)_\(pageIndex).pdf"
+        let pdfURL = URL(fileURLWithPath: pdfPath)
+        
+        // Create PDF context
+        UIGraphicsBeginPDFContextToFile(pdfPath, CGRect.zero, nil)
+        UIGraphicsBeginPDFPage()
+        
+        // Draw the image
+        let imageRect = CGRect(x: 0, y: 0, width: image.size.width, height: image.size.height)
+        image.draw(in: imageRect)
+        
+        // Close PDF context
+        UIGraphicsEndPDFContext()
+        
+        return pdfPath
     }
     
     // MARK: - UIAdaptivePresentationControllerDelegate

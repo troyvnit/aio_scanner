@@ -142,9 +142,9 @@ void main() {
       // Verify the result was processed correctly
       expect(result, isNotNull);
       expect(result!.isSuccessful, true);
-      expect(result.scannedImages.length, 2);
-      expect(result.scannedImages[0].path, '/mock/doc1.jpg');
-      expect(result.scannedImages[1].path, '/mock/doc2.jpg');
+      expect(result.scannedFiles.length, 2);
+      expect(result.scannedFiles[0].path, '/mock/doc1.jpg');
+      expect(result.scannedFiles[1].path, '/mock/doc2.jpg');
       expect(result.extractedText, 'Lorem ipsum dolor sit amet');
       expect(result.errorMessage, isNull);
     } catch (e) {
@@ -196,7 +196,7 @@ void main() {
       // Verify the exception was handled properly
       expect(result, isNotNull);
       expect(result!.isSuccessful, false);
-      expect(result.scannedImages, isEmpty);
+      expect(result.scannedFiles, isEmpty);
       expect(result.errorMessage, contains('PlatformException'));
       expect(result.errorMessage, contains('TEST_ERROR'));
       expect(result.errorMessage, contains('Test error message'));

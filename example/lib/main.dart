@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:aio_scanner/aio_scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:device_info_plus/device_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// Application entry point
 void main() {
@@ -46,23 +46,26 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  /// Collection of scanned document images
-  final List<File> _scannedImages = [];
+  /// Collection of scanned document files
+  final List<File> _scannedFiles = [];
 
   /// Text extracted from scanned documents using OCR
   String _extractedText = '';
-  
+
   /// List of decoded barcode values
   List<String> _barcodeValues = [];
-  
+
   /// List of barcode formats detected
   List<String> _barcodeFormats = [];
-  
+
   /// Loading state to manage UI during scanning operations
   bool _isLoading = false;
-  
+
   /// Current scan mode (document or barcode)
   String _currentScanMode = 'document';
+
+  /// Current output format for document scanning
+  ScanOutputFormat _outputFormat = ScanOutputFormat.image;
 
   @override
   void initState() {
@@ -81,13 +84,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Displays an error message if any permission is denied.
   Future<void> _requestPermissions() async {
     if (Platform.isAndroid) {
-      // Get Android SDK version using device_info_plus
-      final deviceInfo = DeviceInfoPlugin();
-      final androidInfo = await deviceInfo.androidInfo;
-      final sdkVersion = androidInfo.version.sdkInt;
-
-      final bool isAndroid13OrHigher = sdkVersion >= 33; // SDK 33 = Android 13
-      final bool isAndroid10OrHigher = sdkVersion >= 29; // SDK 29 = Android 10
+      // Get Android SDK version directly from the Platform info
+      // Android SDK version naming: Android 13 = SDK 33, Android 12 = SDK 32, etc.
+      final androidVersion =
+          int.tryParse(Platform.operatingSystemVersion.split('.').first) ?? 0;
+      final bool isAndroid13OrHigher = androidVersion >= 13; // SDK 33+
+      final bool isAndroid10OrHigher = androidVersion >= 10; // SDK 29+
 
       // Determine which permissions to request based on Android version
       final permissionsToRequest = <Permission>[
@@ -111,7 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
         (status) => status.isDenied || status.isPermanentlyDenied,
       )) {
         _showErrorSnackBar(
-          'Camera and storage permissions are required for scanning. '
+          'Camera and storage permissions are required for document scanning. '
           'Please enable them in app settings.',
         );
       }
@@ -141,7 +143,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       description:
                           'Scan documents with automatic edge detection',
                       icon: Icons.document_scanner,
-                      onTap: _startDocumentScan,
+                      onTap: () {
+                        _showOutputFormatBottomSheet();
+                      },
                     ),
                     const SizedBox(height: 16),
                     _buildFeatureCard(
@@ -152,7 +156,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
 
                     // Document scan results
-                    if (_currentScanMode == 'document' && _scannedImages.isNotEmpty) ...[
+                    if (_currentScanMode == 'document' &&
+                        _scannedFiles.isNotEmpty) ...[
                       const SizedBox(height: 32),
                       const Text(
                         'Scanned Documents',
@@ -162,40 +167,51 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      SizedBox(
-                        height: 200,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _scannedImages.length,
-                          itemBuilder: (context, index) {
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 12.0),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  height: 200,
-                                  width: 150,
-                                  color: Colors.grey.shade300,
-                                  child: Image.file(
-                                    _scannedImages[index],
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return Center(
-                                        child: Icon(
-                                          Icons.image,
-                                          size: 80,
-                                          color: Colors.grey.shade600,
-                                        ),
-                                      );
-                                    },
+                      if (_outputFormat == ScanOutputFormat.image)
+                        SizedBox(
+                          height: 200,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _scannedFiles.length,
+                            itemBuilder: (context, index) {
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 12.0),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    height: 200,
+                                    width: 150,
+                                    color: Colors.grey.shade300,
+                                    child: Image.file(
+                                      _scannedFiles[index],
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (
+                                        context,
+                                        error,
+                                        stackTrace,
+                                      ) {
+                                        return Center(
+                                          child: Icon(
+                                            Icons.image,
+                                            size: 80,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
+                        )
+                      else
+                        ElevatedButton.icon(
+                          onPressed: _openPDF,
+                          icon: const Icon(Icons.picture_as_pdf),
+                          label: const Text('Open PDF'),
                         ),
-                      ),
-                      
+
                       // Document extracted text
                       if (_extractedText.isNotEmpty) ...[
                         const SizedBox(height: 24),
@@ -218,9 +234,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
                     ],
-                    
+
                     // Barcode scan results
-                    if (_currentScanMode == 'barcode' && _barcodeValues.isNotEmpty) ...[
+                    if (_currentScanMode == 'barcode' &&
+                        _barcodeValues.isNotEmpty) ...[
                       const SizedBox(height: 32),
                       const Text(
                         'Scanned Barcodes',
@@ -230,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      
+
                       // List of detected barcodes
                       ...List.generate(_barcodeValues.length, (index) {
                         return Container(
@@ -239,7 +256,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           decoration: BoxDecoration(
                             color: Colors.deepPurple.shade50,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.deepPurple.shade100),
+                            border: Border.all(
+                              color: Colors.deepPurple.shade100,
+                            ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,7 +267,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 children: [
                                   Container(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, 
+                                      horizontal: 8,
                                       vertical: 4,
                                     ),
                                     decoration: BoxDecoration(
@@ -269,7 +288,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                     icon: const Icon(Icons.copy, size: 20),
                                     onPressed: () {
                                       // Copy to clipboard functionality could be added here
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
                                         const SnackBar(
                                           content: Text('Copied to clipboard'),
                                           behavior: SnackBarBehavior.floating,
@@ -295,6 +316,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+      floatingActionButton: FloatingActionButton(
+        onPressed:
+            _currentScanMode == 'document'
+                ? _startDocumentScan
+                : _startBarcodeScan,
+        tooltip: 'Start Scan',
+        child: const Icon(Icons.camera_alt),
+      ),
     );
   }
 
@@ -397,6 +426,7 @@ class _HomeScreenState extends State<HomeScreen> {
         initialMessage: 'Position document in frame',
         scanningMessage: 'Hold still...',
         allowGalleryImport: true,
+        outputFormat: _outputFormat,
       );
 
       setState(() {
@@ -406,8 +436,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (result != null && result.isSuccessful) {
         // Process scan result
         setState(() {
-          _scannedImages.clear();
-          _scannedImages.addAll(result.scannedImages);
+          _scannedFiles.clear();
+          _scannedFiles.addAll(result.scannedFiles);
           _extractedText = result.extractedText ?? '';
           _barcodeValues = [];
           _barcodeFormats = [];
@@ -456,11 +486,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // Call the plugin
       BarcodeScanResult? result = await AioScanner.startBarcodeScanning(
         scanningMessage: 'Scanning...',
-        recognizedFormats: [
-          'qr',
-          'ean13',
-          'code128'
-        ],
+        recognizedFormats: ['qr', 'ean13', 'code128'],
       );
 
       setState(() {
@@ -472,7 +498,7 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _barcodeValues = result.barcodeValues;
           _barcodeFormats = result.barcodeFormats;
-          _scannedImages.clear();
+          _scannedFiles.clear();
           _extractedText = '';
         });
       } else {
@@ -501,7 +527,77 @@ class _HomeScreenState extends State<HomeScreen> {
         content: Text(message),
         backgroundColor: Colors.red.shade800,
         behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.only(
+          bottom: MediaQuery.of(context).padding.bottom + 80,
+          left: 16,
+          right: 16,
+        ),
       ),
+    );
+  }
+
+  Future<void> _openPDF() async {
+    if (_scannedFiles.isEmpty) {
+      _showErrorSnackBar('No scanned files available');
+      return;
+    }
+
+    final file = _scannedFiles.first;
+    if (!await file.exists()) {
+      _showErrorSnackBar('PDF file not found at: ${file.path}');
+      return;
+    }
+
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text: 'Scanned Document',
+          files: _scannedFiles.map((file) => XFile(file.path)).toList(),
+        ),
+      );
+    } catch (e) {
+      _showErrorSnackBar('Failed to share PDF: ${e.toString()}');
+    }
+  }
+
+  void _showOutputFormatBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.image),
+                title: const Text('Scan as Images'),
+                subtitle: const Text('Save each page as a separate image'),
+                selected: _outputFormat == ScanOutputFormat.image,
+                onTap: () {
+                  setState(() {
+                    _outputFormat = ScanOutputFormat.image;
+                  });
+                  Navigator.pop(context);
+                  _startDocumentScan();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf),
+                title: const Text('Scan as PDF'),
+                subtitle: const Text('Save all pages as a single PDF'),
+                selected: _outputFormat == ScanOutputFormat.pdf,
+                onTap: () {
+                  setState(() {
+                    _outputFormat = ScanOutputFormat.pdf;
+                  });
+                  Navigator.pop(context);
+                  _startDocumentScan();
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
