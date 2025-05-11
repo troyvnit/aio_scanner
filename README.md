@@ -29,6 +29,7 @@ A powerful cross-platform document and barcode scanning package for Flutter that
 - 📐 **Image Enhancement**: Automatic lighting and color correction
 - 📚 **Multi-page Support**: Scan multiple pages in one session
 - 📷 **Gallery Import**: Import existing images for processing
+- 📄 **PDF Support**: Generate PDFs from scanned documents with single or multi-page options
 - 🎨 **Customizable UI**: Tailor the scanning experience
 - ⚡ **High Performance**: Utilizes native capabilities for optimal results
 
@@ -56,7 +57,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  aio_scanner: ^1.0.0
+  aio_scanner: ^1.0.1
 ```
 
 ### iOS Setup
@@ -124,17 +125,19 @@ Future<void> scanDocument() async {
       initialMessage: 'Position document in frame',
       scanningMessage: 'Hold still...',
       allowGalleryImport: true,
+      outputFormat: ScanOutputFormat.pdf, // or ScanOutputFormat.image
+      mergePDF: true, // merge all pages into a single PDF
     );
 
     if (result != null && result.isSuccessful) {
-      // Access scanned images
-      final scannedImages = result.scannedImages;
+      // Access scanned files (images or PDFs)
+      final scannedFiles = result.scannedFiles;
 
       // Access extracted text
       final extractedText = result.extractedText;
 
       // Process the results as needed
-      print('Scanned ${scannedImages.length} pages');
+      print('Scanned ${scannedFiles.length} files');
       print('Extracted text: $extractedText');
     }
   } catch (e) {
@@ -235,13 +238,15 @@ The AIO Scanner plugin provides several configuration options:
 
 ### Document Scanning Options
 
-| Parameter            | Type     | Description                                    |
-| -------------------- | -------- | ---------------------------------------------- |
-| `outputDirectory`    | `String` | Directory where scanned images will be saved   |
-| `maxNumPages`        | `int`    | Maximum number of pages to scan (default: 5)   |
-| `initialMessage`     | `String` | Message displayed before scanning starts       |
-| `scanningMessage`    | `String` | Message displayed during scanning              |
-| `allowGalleryImport` | `bool`   | Whether to allow importing images from gallery |
+| Parameter            | Type                | Description                                    |
+| -------------------- | ------------------- | ---------------------------------------------- |
+| `outputDirectory`    | `String`           | Directory where scanned files will be saved    |
+| `maxNumPages`        | `int`              | Maximum number of pages to scan (default: 5)   |
+| `initialMessage`     | `String`           | Message displayed before scanning starts       |
+| `scanningMessage`    | `String`           | Message displayed during scanning              |
+| `allowGalleryImport` | `bool`             | Whether to allow importing images from gallery |
+| `outputFormat`       | `ScanOutputFormat` | Output format (image or PDF)                   |
+| `mergePDF`           | `bool`             | Whether to merge pages into a single PDF       |
 
 ### Barcode Scanning Options
 
@@ -275,7 +280,7 @@ The `ScanResult` object provides access to the document scanning results:
 | Property        | Type         | Description                                                   |
 | --------------- | ------------ | ------------------------------------------------------------- |
 | `isSuccessful`  | `bool`       | Whether the scan was successful                               |
-| `scannedImages` | `List<File>` | List of scanned image files                                   |
+| `scannedFiles`  | `List<File>` | List of scanned files (images or PDFs)                        |
 | `extractedText` | `String?`    | Text extracted from the scanned images (if OCR was performed) |
 | `errorMessage`  | `String?`    | Error message if the scan failed                              |
 
@@ -297,12 +302,14 @@ The `BarcodeScanResult` object provides access to the barcode scanning results:
 - **Document Scanning**: Uses Apple's VisionKit `VNDocumentCameraViewController` for document scanning.
 - **Barcode Scanning**: Uses VisionKit's `DataScannerViewController` for barcode scanning (iOS 16.0+).
 - **Text Recognition**: Uses the Vision framework for OCR.
+- **PDF Generation**: Uses PDFKit for PDF creation and manipulation.
 
 ### Android Implementation
 
 - **Document Scanning**: Uses Google's ML Kit Document Scanner API for document scanning.
 - **Barcode Scanning**: Uses ML Kit's Barcode Scanning API for barcode detection.
 - **Text Recognition**: Uses ML Kit Text Recognition API for OCR.
+- **PDF Generation**: Uses Android's PDF generation capabilities.
 
 ## Troubleshooting
 
@@ -310,11 +317,13 @@ The `BarcodeScanResult` object provides access to the barcode scanning results:
 
 1. **Scanner not working on simulator**: The document scanner requires a physical device with a camera.
 2. **Permission errors**: Ensure you've added the necessary privacy descriptions in Info.plist.
+3. **PDF generation issues**: Make sure you have sufficient storage space and permissions.
 
 ### Android Issues
 
 1. **ML Kit initialization failure**: Make sure Google Play Services are up to date on the device.
 2. **Permission issues**: For Android 13+, ensure you're requesting the correct granular permissions (READ_MEDIA_IMAGES instead of storage).
+3. **PDF generation issues**: Check storage permissions and available space.
 
 ## License
 

@@ -1,6 +1,6 @@
 name: aio_scanner
-description: A Flutter package for scanning documents and barcodes with native VisionKit on iOS and ML Kit on Android, featuring auto-confirmation and text extraction.
-version: 1.0.0
+description: A Flutter plugin that provides document and barcode scanning capabilities using native platform APIs.
+version: 1.0.1
 repository: https://github.com/troyvnit/aio_scanner
 homepage: https://github.com/troyvnit/aio_scanner
 issue_tracker: https://github.com/troyvnit/aio_scanner/issues
