@@ -19,9 +19,11 @@ void main() {
   setUp(() {
     mockChannel = MockMethodChannel();
     // Set up the mock channel
-    const MethodChannel('aio_scanner').setMockMethodCallHandler((call) async {
-      return await mockChannel.invokeMethod(call.method, call.arguments);
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('aio_scanner'),
+      (call) async => await mockChannel.invokeMethod(call.method, call.arguments),
+    );
   });
 
   group('AioScanner', () {
