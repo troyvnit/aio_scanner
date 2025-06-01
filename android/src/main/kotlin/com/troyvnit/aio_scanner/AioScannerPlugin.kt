@@ -36,6 +36,9 @@ import android.provider.MediaStore
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
+import java.io.FileOutputStream
 
 /**
  * # AioScannerPlugin
@@ -467,22 +470,42 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
                 outputDir.mkdirs()
             }
 
+            // Create thumbnail directory
+            val thumbnailDir = File(outputDir, "thumbnails")
+            if (!thumbnailDir.exists()) {
+                thumbnailDir.mkdirs()
+            }
+
             val imagePaths = mutableListOf<String>()
+            val thumbnailPaths = mutableListOf<String>()
             var allText = ""
             val bitmaps = mutableListOf<Bitmap>()
 
-            // Process each page - use safe call (?.) and elvis operator (?:) to safely handle nullable list
+            // Process each page
             pages?.forEach { page ->
                 // Get the image uri and convert to bitmap
                 val uri = page.imageUri
                 val bitmap = getBitmapFromUri(uri)
                 
-                // Save the image to our output directory
+                // Generate thumbnail
+                val thumbnailSize = 300
+                val thumbnailBitmap = Bitmap.createScaledBitmap(
+                    bitmap,
+                    thumbnailSize,
+                    (thumbnailSize * bitmap.height / bitmap.width).toInt(),
+                    true
+                )
+                
+                // Save the image and thumbnail
                 val timestamp = System.currentTimeMillis()
                 val imageFile = File(outputDir, "scan_${timestamp}_${imagePaths.size}.jpg")
+                val thumbnailFile = File(thumbnailDir, "scan_${timestamp}_${imagePaths.size}_thumb.jpg")
+                
                 saveBitmapToFile(bitmap, imageFile)
+                saveBitmapToFile(thumbnailBitmap, thumbnailFile)
                 
                 imagePaths.add(imageFile.absolutePath)
+                thumbnailPaths.add(thumbnailFile.absolutePath)
                 bitmaps.add(bitmap)
                 
                 // Extract text
@@ -493,18 +516,22 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
                     }
                     allText += pageText
                 }
+                
+                // Recycle thumbnails
+                thumbnailBitmap.recycle()
             }
             
             // Check if PDF output was requested
             val outputFormat = currentScanArgs?.get("outputFormat") as? String
             val shouldGeneratePDF = outputFormat == "pdf"
             val shouldMergePDF = currentScanArgs?.get("mergePDF") as? Boolean ?: true
-            
+
             // Return the result to Flutter
             mainHandler.post {
                 val result = mutableMapOf(
                     "isSuccessful" to true,
-                    "extractedText" to allText
+                    "extractedText" to allText,
+                    "thumbnailPaths" to thumbnailPaths
                 )
                 
                 if (shouldGeneratePDF) {
@@ -512,9 +539,9 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
                         // Generate single PDF with all pages
                         val pdfPath = generatePDF(bitmaps, outputDir)
                         if (pdfPath != null) {
-                            result["imagePaths"] = listOf(pdfPath)
+                            result["filePaths"] = listOf(pdfPath)
                         } else {
-                            result["imagePaths"] = imagePaths
+                            result["filePaths"] = imagePaths
                         }
                     } else {
                         // Generate individual PDFs for each page
@@ -523,14 +550,14 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
                         }.filterNotNull()
                         
                         if (pdfPaths.isNotEmpty()) {
-                            result["imagePaths"] = pdfPaths
+                            result["filePaths"] = pdfPaths
                         } else {
-                            result["imagePaths"] = imagePaths
+                            result["filePaths"] = imagePaths
                         }
                     }
                 } else {
                     // Return individual image paths
-                    result["imagePaths"] = imagePaths
+                    result["filePaths"] = imagePaths
                 }
                 
                 pendingResult?.success(result)
@@ -753,6 +780,89 @@ class AioScannerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Plugin
      */
     override fun onDetachedFromActivity() {
         activity = null
+    }
+
+    /**
+     * Generates a thumbnail for a file (image or PDF)
+     *
+     * @param filePath Path to the file to generate thumbnail for
+     * @param size Size of the thumbnail (width and height)
+     * @return Path to the generated thumbnail image, or null if generation failed
+     */
+    private fun generateThumbnail(filePath: String, size: Int = 300): String? {
+        val file = File(filePath)
+        if (!file.exists()) return null
+
+        // Create thumbnail directory if it doesn't exist
+        val thumbnailDir = File(file.parent, "thumbnails")
+        if (!thumbnailDir.exists()) {
+            thumbnailDir.mkdirs()
+        }
+
+        // Generate thumbnail path
+        val thumbnailPath = File(thumbnailDir, "${file.nameWithoutExtension}_thumb.jpg").absolutePath
+
+        // Check if thumbnail already exists
+        if (File(thumbnailPath).exists()) {
+            return thumbnailPath
+        }
+
+        return try {
+            if (filePath.lowercase().endsWith(".pdf")) {
+                // Generate PDF thumbnail
+                val fileDescriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+                val pdfRenderer = PdfRenderer(fileDescriptor)
+                
+                try {
+                    val page = pdfRenderer.openPage(0)
+                    val bitmap = Bitmap.createBitmap(
+                        size,
+                        (size * page.height / page.width).toInt(),
+                        Bitmap.Config.ARGB_8888
+                    )
+                    
+                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    page.close()
+                    
+                    // Save thumbnail
+                    FileOutputStream(thumbnailPath).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                    }
+                    bitmap.recycle()
+                    
+                    thumbnailPath
+                } finally {
+                    pdfRenderer.close()
+                    fileDescriptor.close()
+                }
+            } else {
+                // Generate image thumbnail
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeFile(filePath, options)
+                
+                val width = options.outWidth
+                val height = options.outHeight
+                val scale = minOf(size.toFloat() / width, size.toFloat() / height)
+                
+                options.inJustDecodeBounds = false
+                options.inSampleSize = (1 / scale).toInt()
+                
+                val bitmap = BitmapFactory.decodeFile(filePath, options)
+                
+                // Save thumbnail
+                FileOutputStream(thumbnailPath).use { out ->
+                    bitmap?.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                }
+                bitmap?.recycle()
+                
+                thumbnailPath
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
     companion object {

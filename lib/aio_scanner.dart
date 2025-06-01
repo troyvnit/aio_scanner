@@ -19,74 +19,93 @@ enum ScanOutputFormat {
   pdf
 }
 
+/// Represents a scanned file with its path and thumbnail
+class ScanFile {
+  /// The path to the scanned file (image or PDF)
+  final String filePath;
+
+  /// The path to the thumbnail of the scanned file
+  final String thumbnailPath;
+
+  /// Creates a new [ScanFile] instance
+  const ScanFile({
+    required this.filePath,
+    required this.thumbnailPath,
+  });
+
+  /// Creates a [ScanFile] from a JSON map
+  factory ScanFile.fromJson(Map<String, dynamic> json) {
+    return ScanFile(
+      filePath: json['filePath'] as String,
+      thumbnailPath: json['thumbnailPath'] as String,
+    );
+  }
+
+  /// Converts this [ScanFile] to a JSON map
+  Map<String, dynamic> toJson() {
+    return {
+      'filePath': filePath,
+      'thumbnailPath': thumbnailPath,
+    };
+  }
+}
+
 /// Result of a document scanning operation
 ///
 /// This class encapsulates all data returned from a scanning session,
 /// including success status, scanned files, extracted text, and any error messages.
 /// It provides a convenient way to handle and process scan results in the application.
 class ScanResult {
-  /// Whether the scan was successfully completed.
-  ///
-  /// A value of `true` indicates that the scanning process completed without errors
-  /// and files were captured. A value of `false` indicates that an error occurred
-  /// or the user cancelled the scanning process.
+  /// Whether the scan was successful
   final bool isSuccessful;
 
-  /// List of captured document files as [File] objects.
-  ///
-  /// Each file represents either:
-  /// - A page of the scanned document (when output format is image)
-  /// - A single PDF file containing all pages (when output format is pdf and mergePDF is true)
-  /// - Individual PDF files for each page (when output format is pdf and mergePDF is false)
-  /// The files are stored in the output directory specified when starting the scan.
-  final List<File> scannedFiles;
+  /// List of scanned files with their paths and thumbnails
+  final List<ScanFile> scannedFiles;
 
-  /// Text extracted from the scanned document using OCR.
-  ///
-  /// This field contains the recognized text content from all scanned pages.
-  /// May be null if no text could be extracted or if OCR failed.
+  /// Text extracted from the scanned documents (if OCR was performed)
   final String? extractedText;
 
-  /// Error message if the scan was not successful.
-  ///
-  /// Contains a description of what went wrong if [isSuccessful] is `false`.
-  /// May be null if the scan was successful or if the error was unspecified.
+  /// Error message if the scan failed
   final String? errorMessage;
 
-  /// Creates a new [ScanResult] instance.
-  ///
-  /// [isSuccessful] indicates whether the scan completed successfully.
-  /// [scannedFiles] contains the list of captured files.
-  /// [extractedText] contains the recognized text from the document (optional).
-  /// [errorMessage] provides error details if the scan failed (optional).
-  ScanResult({
+  /// Creates a new [ScanResult] instance
+  const ScanResult({
     required this.isSuccessful,
     required this.scannedFiles,
     this.extractedText,
     this.errorMessage,
   });
 
-  /// Creates a [ScanResult] from a map returned by the platform channel.
-  ///
-  /// This factory constructor handles the conversion from the raw platform data
-  /// to a strongly-typed Dart object. It processes the file paths from the native
-  /// implementation and converts them to [File] objects.
-  ///
-  /// [map] is the raw data map returned from the platform-specific implementation.
-  factory ScanResult.fromMap(Map<dynamic, dynamic> map) {
-    final List<File> files = [];
-    if (map['filePaths'] != null) {
-      for (String path in map['filePaths']) {
-        files.add(File(path));
-      }
-    }
+  /// Creates a [ScanResult] from a JSON map
+  factory ScanResult.fromJson(Map<String, dynamic> json) {
+    final List<dynamic> filePaths = json['filePaths'] as List<dynamic>;
+    final List<dynamic> thumbnailPaths = json['thumbnailPaths'] as List<dynamic>;
+    
+    final List<ScanFile> scannedFiles = List.generate(
+      filePaths.length,
+      (index) => ScanFile(
+        filePath: filePaths[index] as String,
+        thumbnailPath: thumbnailPaths[index] as String,
+      ),
+    );
 
     return ScanResult(
-      isSuccessful: map['isSuccessful'] ?? false,
-      scannedFiles: files,
-      extractedText: map['extractedText'],
-      errorMessage: map['errorMessage'],
+      isSuccessful: json['isSuccessful'] as bool,
+      scannedFiles: scannedFiles,
+      extractedText: json['extractedText'] as String?,
+      errorMessage: json['errorMessage'] as String?,
     );
+  }
+
+  /// Converts this [ScanResult] to a JSON map
+  Map<String, dynamic> toJson() {
+    return {
+      'isSuccessful': isSuccessful,
+      'filePaths': scannedFiles.map((f) => f.filePath).toList(),
+      'thumbnailPaths': scannedFiles.map((f) => f.thumbnailPath).toList(),
+      'extractedText': extractedText,
+      'errorMessage': errorMessage,
+    };
   }
 }
 
@@ -290,7 +309,7 @@ class AioScanner {
 
       if (result == null) return null;
 
-      return ScanResult.fromMap(Map<dynamic, dynamic>.from(result));
+      return ScanResult.fromJson(Map<String, dynamic>.from(result));
     } catch (e) {
       return ScanResult(
         isSuccessful: false,
@@ -351,5 +370,16 @@ class AioScanner {
         errorMessage: e.toString(),
       );
     }
+  }
+
+  /// Generates a thumbnail for a file (image or PDF)
+  ///
+  /// Returns a map containing the thumbnail path if successful.
+  /// The thumbnail will be saved in a 'thumbnails' directory next to the original file.
+  static Future<Map<String, dynamic>> generateThumbnail(String filePath) async {
+    final Map<dynamic, dynamic>? result = await _channel.invokeMethod('generateThumbnail', {
+      'filePath': filePath,
+    });
+    return result?.cast<String, dynamic>() ?? {};
   }
 }

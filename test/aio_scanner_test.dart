@@ -92,7 +92,7 @@ void main() {
       );
       expect(result?.isSuccessful, true);
       expect(result?.scannedFiles.length, 1);
-      expect(result?.scannedFiles.first.path, '/path/to/merged.pdf');
+      expect(result?.scannedFiles.first.filePath, '/path/to/merged.pdf');
       expect(result?.extractedText, 'Sample text');
     });
 
@@ -125,9 +125,9 @@ void main() {
       );
       expect(result?.isSuccessful, true);
       expect(result?.scannedFiles.length, 3);
-      expect(result?.scannedFiles[0].path, '/path/to/page1.pdf');
-      expect(result?.scannedFiles[1].path, '/path/to/page2.pdf');
-      expect(result?.scannedFiles[2].path, '/path/to/page3.pdf');
+      expect(result?.scannedFiles[0].filePath, '/path/to/page1.pdf');
+      expect(result?.scannedFiles[1].filePath, '/path/to/page2.pdf');
+      expect(result?.scannedFiles[2].filePath, '/path/to/page3.pdf');
       expect(result?.extractedText, 'Sample text');
     });
 
@@ -221,12 +221,12 @@ void main() {
         'errorMessage': null,
       };
 
-      final result = ScanResult.fromMap(resultMap);
+      final result = ScanResult.fromJson(Map<String, dynamic>.from(resultMap));
 
       expect(result.isSuccessful, true);
       expect(result.scannedFiles.length, 2);
-      expect(result.scannedFiles[0].path, imagePath1);
-      expect(result.scannedFiles[1].path, imagePath2);
+      expect(result.scannedFiles[0].filePath, imagePath1);
+      expect(result.scannedFiles[1].filePath, imagePath2);
       expect(result.extractedText, 'Sample extracted text');
       expect(result.errorMessage, null);
     });
@@ -239,7 +239,7 @@ void main() {
         // Missing 'errorMessage'
       };
 
-      final result = ScanResult.fromMap(resultMap);
+      final result = ScanResult.fromJson(Map<String, dynamic>.from(resultMap));
 
       expect(result.isSuccessful, true);
       expect(result.scannedFiles, isEmpty);
@@ -255,7 +255,7 @@ void main() {
         'errorMessage': null,
       };
 
-      final result = ScanResult.fromMap(resultMap);
+      final result = ScanResult.fromJson(Map<String, dynamic>.from(resultMap));
 
       expect(result.isSuccessful, false); // Defaults to false when null
       expect(result.scannedFiles, isEmpty);

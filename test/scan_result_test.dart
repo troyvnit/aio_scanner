@@ -11,14 +11,17 @@ void main() {
       
       final result = ScanResult(
         isSuccessful: true,
-        scannedFiles: mockFilePaths.map((path) => File(path)).toList(),
+        scannedFiles: mockFilePaths.map((path) => ScanFile(
+          filePath: path,
+          thumbnailPath: path.replaceAll('.jpg', '_thumb.jpg'),
+        )).toList(),
         extractedText: 'Test extracted text',
       );
       
       expect(result.isSuccessful, true);
       expect(result.scannedFiles.length, 2);
-      expect(result.scannedFiles[0].path, '/mock/image1.jpg');
-      expect(result.scannedFiles[1].path, '/mock/image2.jpg');
+      expect(result.scannedFiles[0].filePath, '/mock/image1.jpg');
+      expect(result.scannedFiles[1].filePath, '/mock/image2.jpg');
       expect(result.extractedText, 'Test extracted text');
       expect(result.errorMessage, null);
     });
@@ -37,7 +40,7 @@ void main() {
       expect(result.errorMessage, 'Test error message');
     });
     
-    test('fromMap creates valid ScanResult from map', () {
+    test('fromJson creates valid ScanResult from map', () {
       final mockFilePaths = ['/mock/image1.jpg', '/mock/image2.jpg'];
       
       final Map<String, dynamic> map = {
@@ -46,24 +49,24 @@ void main() {
         'extractedText': 'Test extracted text',
       };
       
-      final result = ScanResult.fromMap(map);
+      final result = ScanResult.fromJson(map);
       
       expect(result.isSuccessful, true);
       expect(result.scannedFiles.length, 2);
-      expect(result.scannedFiles[0].path, '/mock/image1.jpg');
-      expect(result.scannedFiles[1].path, '/mock/image2.jpg');
+      expect(result.scannedFiles[0].filePath, '/mock/image1.jpg');
+      expect(result.scannedFiles[1].filePath, '/mock/image2.jpg');
       expect(result.extractedText, 'Test extracted text');
       expect(result.errorMessage, null);
     });
     
-    test('fromMap handles empty file paths', () {
+    test('fromJson handles empty file paths', () {
       final Map<String, dynamic> map = {
         'isSuccessful': true,
         'filePaths': [],
         'extractedText': 'Test extracted text',
       };
       
-      final result = ScanResult.fromMap(map);
+      final result = ScanResult.fromJson(map);
       
       expect(result.isSuccessful, true);
       expect(result.scannedFiles, isEmpty);
@@ -71,14 +74,14 @@ void main() {
       expect(result.errorMessage, null);
     });
     
-    test('fromMap handles null file paths', () {
+    test('fromJson handles null file paths', () {
       final Map<String, dynamic> map = {
         'isSuccessful': true,
         'filePaths': null,
         'extractedText': 'Test extracted text',
       };
       
-      final result = ScanResult.fromMap(map);
+      final result = ScanResult.fromJson(map);
       
       expect(result.isSuccessful, true);
       expect(result.scannedFiles, isEmpty);
@@ -86,7 +89,7 @@ void main() {
       expect(result.errorMessage, null);
     });
     
-    test('fromMap handles null extracted text', () {
+    test('fromJson handles null extracted text', () {
       final mockFilePaths = ['/mock/image1.jpg'];
       
       final Map<String, dynamic> map = {
@@ -95,16 +98,16 @@ void main() {
         'extractedText': null,
       };
       
-      final result = ScanResult.fromMap(map);
+      final result = ScanResult.fromJson(map);
       
       expect(result.isSuccessful, true);
       expect(result.scannedFiles.length, 1);
-      expect(result.scannedFiles[0].path, '/mock/image1.jpg');
+      expect(result.scannedFiles[0].filePath, '/mock/image1.jpg');
       expect(result.extractedText, null);
       expect(result.errorMessage, null);
     });
     
-    test('fromMap handles error message', () {
+    test('fromJson handles error message', () {
       final Map<String, dynamic> map = {
         'isSuccessful': false,
         'filePaths': [],
@@ -112,7 +115,7 @@ void main() {
         'errorMessage': 'Test error message',
       };
       
-      final result = ScanResult.fromMap(map);
+      final result = ScanResult.fromJson(map);
       
       expect(result.isSuccessful, false);
       expect(result.scannedFiles, isEmpty);
@@ -120,7 +123,7 @@ void main() {
       expect(result.errorMessage, 'Test error message');
     });
     
-    test('fromMap handles missing fields', () {
+    test('fromJson handles missing fields', () {
       final Map<String, dynamic> map = {
         'isSuccessful': true,
         // Missing filePaths
@@ -128,7 +131,7 @@ void main() {
         // Missing errorMessage
       };
       
-      final result = ScanResult.fromMap(map);
+      final result = ScanResult.fromJson(map);
       
       expect(result.isSuccessful, true);
       expect(result.scannedFiles, isEmpty);
@@ -136,14 +139,14 @@ void main() {
       expect(result.errorMessage, null);
     });
     
-    test('fromMap handles null success status', () {
+    test('fromJson handles null success status', () {
       final Map<String, dynamic> map = {
         'isSuccessful': null,
         'filePaths': ['/mock/image1.jpg'],
         'extractedText': 'Test text',
       };
       
-      final result = ScanResult.fromMap(map);
+      final result = ScanResult.fromJson(map);
       
       // Should default to false when isSuccessful is null
       expect(result.isSuccessful, false);
@@ -152,10 +155,10 @@ void main() {
       expect(result.errorMessage, null);
     });
     
-    test('fromMap handles empty map', () {
+    test('fromJson handles empty map', () {
       final Map<String, dynamic> map = {};
       
-      final result = ScanResult.fromMap(map);
+      final result = ScanResult.fromJson(map);
       
       // Should create a default unsuccessful result
       expect(result.isSuccessful, false);

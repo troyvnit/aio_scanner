@@ -360,20 +360,43 @@ import PDFKit
                 }
             }
             
+            // Create thumbnail directory
+            let thumbnailDir = (outputDir as NSString).appendingPathComponent("thumbnails")
+            if !fileManager.fileExists(atPath: thumbnailDir) {
+                do {
+                    try fileManager.createDirectory(atPath: thumbnailDir, withIntermediateDirectories: true, attributes: nil)
+                } catch {
+                    print("Failed to create thumbnail directory: \(error)")
+                }
+            }
+            
             // Save the scanned images
             var imagePaths: [String] = []
+            var thumbnailPaths: [String] = []
             var allText = ""
             var images: [UIImage] = []
             
             for i in 0..<scan.pageCount {
                 let image = scan.imageOfPage(at: i)
-                let imagePath = "\(outputDir)/scan_\(Date().timeIntervalSince1970)_\(i).jpg"
+                let timestamp = Date().timeIntervalSince1970
+                let imagePath = "\(outputDir)/scan_\(timestamp)_\(i).jpg"
+                let thumbnailPath = "\(thumbnailDir)/scan_\(timestamp)_\(i)_thumb.jpg"
                 
-                // Save the image
-                if let imageData = image.jpegData(compressionQuality: 0.8) {
+                // Generate thumbnail
+                let thumbnailSize = CGSize(width: 300, height: 300)
+                let renderer = UIGraphicsImageRenderer(size: thumbnailSize)
+                let thumbnailImage = renderer.image { context in
+                    image.draw(in: CGRect(origin: .zero, size: thumbnailSize))
+                }
+                
+                // Save the image and thumbnail
+                if let imageData = image.jpegData(compressionQuality: 0.8),
+                   let thumbnailData = thumbnailImage.jpegData(compressionQuality: 0.8) {
                     do {
                         try imageData.write(to: URL(fileURLWithPath: imagePath))
+                        try thumbnailData.write(to: URL(fileURLWithPath: thumbnailPath))
                         imagePaths.append(imagePath)
+                        thumbnailPaths.append(thumbnailPath)
                         images.append(image)
                         
                         // Try to recognize text in the image
@@ -395,7 +418,8 @@ import PDFKit
                                 DispatchQueue.main.async {
                                     var result: [String: Any] = [
                                         "isSuccessful": true,
-                                        "extractedText": allText
+                                        "extractedText": allText,
+                                        "thumbnailPaths": thumbnailPaths
                                     ]
                                     
                                     if shouldGeneratePDF {
@@ -721,6 +745,87 @@ import PDFKit
         UIGraphicsEndPDFContext()
         
         return pdfPath
+    }
+    
+    /**
+     * Generates a thumbnail for a file (image or PDF)
+     *
+     * - Parameters:
+     *   - filePath: Path to the file to generate thumbnail for
+     *   - size: Size of the thumbnail (width and height)
+     * - Returns: Path to the generated thumbnail image, or nil if generation failed
+     */
+    private func generateThumbnail(for filePath: String, size: CGSize = CGSize(width: 300, height: 300)) -> String? {
+        let fileURL = URL(fileURLWithPath: filePath)
+        let fileExtension = fileURL.pathExtension.lowercased()
+        
+        // Create thumbnail directory if it doesn't exist
+        let thumbnailDir = (fileURL.deletingLastPathComponent().path as NSString).appendingPathComponent("thumbnails")
+        let fileManager = FileManager.default
+        if !fileManager.fileExists(atPath: thumbnailDir) {
+            do {
+                try fileManager.createDirectory(atPath: thumbnailDir, withIntermediateDirectories: true, attributes: nil)
+            } catch {
+                print("Failed to create thumbnail directory: \(error)")
+                return nil
+            }
+        }
+        
+        // Generate thumbnail path
+        let thumbnailPath = (thumbnailDir as NSString).appendingPathComponent("\(fileURL.deletingPathExtension().lastPathComponent)_thumb.jpg")
+        
+        // Check if thumbnail already exists
+        if fileManager.fileExists(atPath: thumbnailPath) {
+            return thumbnailPath
+        }
+        
+        if fileExtension == "pdf" {
+            // Generate PDF thumbnail
+            guard let pdfDocument = PDFDocument(url: fileURL),
+                  let firstPage = pdfDocument.page(at: 0) else {
+                return nil
+            }
+            
+            let pageRect = firstPage.bounds(for: .mediaBox)
+            let scale = min(size.width / pageRect.width, size.height / pageRect.height)
+            let scaledSize = CGSize(width: pageRect.width * scale, height: pageRect.height * scale)
+            
+            let thumbnailImage = firstPage.thumbnail(of: scaledSize, for: .mediaBox)
+            
+            // Save thumbnail
+            if let imageData = thumbnailImage.jpegData(compressionQuality: 0.8) {
+                do {
+                    try imageData.write(to: URL(fileURLWithPath: thumbnailPath))
+                    return thumbnailPath
+                } catch {
+                    print("Failed to save PDF thumbnail: \(error)")
+                    return nil
+                }
+            }
+        } else {
+            // Generate image thumbnail
+            guard let image = UIImage(contentsOfFile: filePath) else {
+                return nil
+            }
+            
+            let renderer = UIGraphicsImageRenderer(size: size)
+            let thumbnailImage = renderer.image { context in
+                image.draw(in: CGRect(origin: .zero, size: size))
+            }
+            
+            // Save thumbnail
+            if let imageData = thumbnailImage.jpegData(compressionQuality: 0.8) {
+                do {
+                    try imageData.write(to: URL(fileURLWithPath: thumbnailPath))
+                    return thumbnailPath
+                } catch {
+                    print("Failed to save image thumbnail: \(error)")
+                    return nil
+                }
+            }
+        }
+        
+        return nil
     }
     
     // MARK: - UIAdaptivePresentationControllerDelegate

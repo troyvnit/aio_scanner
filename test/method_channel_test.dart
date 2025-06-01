@@ -143,8 +143,8 @@ void main() {
       expect(result, isNotNull);
       expect(result!.isSuccessful, true);
       expect(result.scannedFiles.length, 2);
-      expect(result.scannedFiles[0].path, '/mock/doc1.jpg');
-      expect(result.scannedFiles[1].path, '/mock/doc2.jpg');
+      expect(result.scannedFiles[0].filePath, '/mock/doc1.jpg');
+      expect(result.scannedFiles[1].filePath, '/mock/doc2.jpg');
       expect(result.extractedText, 'Lorem ipsum dolor sit amet');
       expect(result.errorMessage, isNull);
     } catch (e) {

@@ -1,9 +1,9 @@
 import 'dart:io';
-
 import 'package:aio_scanner/aio_scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:path/path.dart' as path;
 
 /// Application entry point
 void main() {
@@ -46,8 +46,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  /// Collection of scanned document files
-  final List<File> _scannedFiles = [];
+  /// Collection of scanned files with their paths and thumbnails
+  final List<ScanFile> _scannedFiles = [];
 
   /// Text extracted from scanned documents using OCR
   String _extractedText = '';
@@ -167,50 +167,74 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      if (_outputFormat == ScanOutputFormat.image)
-                        SizedBox(
-                          height: 200,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: _scannedFiles.length,
-                            itemBuilder: (context, index) {
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 12.0),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Container(
-                                    height: 200,
-                                    width: 150,
-                                    color: Colors.grey.shade300,
-                                    child: Image.file(
-                                      _scannedFiles[index],
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (
-                                        context,
-                                        error,
-                                        stackTrace,
-                                      ) {
-                                        return Center(
-                                          child: Icon(
-                                            Icons.image,
-                                            size: 80,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        );
-                                      },
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _scannedFiles.length,
+                        itemBuilder: (context, index) {
+                          final file = _scannedFiles[index];
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  // Thumbnail
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      height: 100,
+                                      width: 75,
+                                      color: Colors.grey.shade300,
+                                      child: Image.file(
+                                        File(file.thumbnailPath),
+                                        fit: BoxFit.cover,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              );
-                            },
-                          ),
-                        )
-                      else
-                        ElevatedButton.icon(
-                          onPressed: _openPDF,
-                          icon: const Icon(Icons.picture_as_pdf),
-                          label: const Text('Open PDF'),
-                        ),
+                                  const SizedBox(width: 16),
+                                  // File Info
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'File ${index + 1}',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          path.basename(file.filePath),
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        if (_outputFormat == ScanOutputFormat.pdf)
+                                          ElevatedButton.icon(
+                                            onPressed: _openPDF,
+                                            icon: const Icon(Icons.picture_as_pdf, size: 18),
+                                            label: const Text('Open PDF'),
+                                            style: ElevatedButton.styleFrom(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 8,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
 
                       // Document extracted text
                       if (_extractedText.isNotEmpty) ...[
@@ -543,8 +567,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final file = _scannedFiles.first;
-    if (!await file.exists()) {
-      _showErrorSnackBar('PDF file not found at: ${file.path}');
+    if (!await File(file.filePath).exists()) {
+      _showErrorSnackBar('PDF file not found at: ${file.filePath}');
       return;
     }
 
@@ -552,7 +576,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await SharePlus.instance.share(
         ShareParams(
           text: 'Scanned Document',
-          files: _scannedFiles.map((file) => XFile(file.path)).toList(),
+          files: _scannedFiles.map((file) => XFile(file.filePath)).toList(),
         ),
       );
     } catch (e) {
