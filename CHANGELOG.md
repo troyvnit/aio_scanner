@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2 - 2025-06-01
+
+- **FEAT**: Result now should be `ScanFile` class with `filePath` and `thumbnailPath`
+- **FEAT**: Updated example app to show file information with thumbnails
+- **TEST**: Improved test coverage and fixed test cases
+
 ## 1.0.1 - 2025-05-11
 
 - **FEAT**: Add PDF generation from scanned documents
