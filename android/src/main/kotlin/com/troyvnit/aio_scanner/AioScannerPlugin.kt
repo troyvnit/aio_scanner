@@ -38,7 +38,6 @@ import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
-import java.io.FileOutputStream
 
 /**
  * # AioScannerPlugin
