@@ -36,12 +36,12 @@ import PDFKit
     private var scanArgs: [String: Any]?
     
     /// Detected barcodes during barcode scanning
-    @available(iOS 16.0, *)
-    private var detectedBarcodes: [RecognizedItem.Barcode] = []
+    /// This property is only used on iOS 16.0+ and should be accessed with availability checks
+    private var detectedBarcodes: [Any] = []
     
     /// Data scanner view controller instance for barcode scanning
-    @available(iOS 16.0, *)
-    private var dataScannerViewController: DataScannerViewController?
+    /// This property is only used on iOS 16.0+ and should be accessed with availability checks
+    private var dataScannerViewController: Any?
     
     /**
      * Registers this plugin with the Flutter engine.
@@ -316,7 +316,13 @@ import PDFKit
     @available(iOS 16.0, *)
     private func dismissBarcodeScanner(withResult result: [String: Any]) {
         DispatchQueue.main.async {
-            self.dataScannerViewController?.dismiss(animated: true) {
+            if let dataScannerViewController = self.dataScannerViewController as? DataScannerViewController {
+                dataScannerViewController.dismiss(animated: true) {
+                    self.barcodeScanResult?(result)
+                    self.barcodeScanResult = nil
+                    self.dataScannerViewController = nil
+                }
+            } else {
                 self.barcodeScanResult?(result)
                 self.barcodeScanResult = nil
                 self.dataScannerViewController = nil
@@ -562,13 +568,18 @@ import PDFKit
     @available(iOS 16.0, *)
     private func processScannedBarcodes() {
         // Stop scanning to prevent multiple callbacks
-        self.dataScannerViewController?.stopScanning()
+        if let dataScannerViewController = self.dataScannerViewController as? DataScannerViewController {
+            dataScannerViewController.stopScanning()
+        }
         
         // Extract barcode values and formats
         var barcodeValues: [String] = []
         var barcodeFormats: [String] = []
         
-        for barcode in self.detectedBarcodes {
+        // Cast detectedBarcodes to the correct type
+        let barcodes = self.detectedBarcodes.compactMap { $0 as? RecognizedItem.Barcode }
+        
+        for barcode in barcodes {
             if let value = barcode.payloadStringValue {
                 barcodeValues.append(value)
                 
@@ -842,7 +853,8 @@ import PDFKit
     public func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
         // Only handle this for barcode scanner
         if #available(iOS 16.0, *),
-           presentationController.presentedViewController === self.dataScannerViewController {
+           let dataScannerViewController = self.dataScannerViewController as? DataScannerViewController,
+           presentationController.presentedViewController === dataScannerViewController {
             // The user is swiping down to dismiss - handle it the same as a cancellation
             dismissBarcodeScanner(withResult: ["isSuccessful": false, "barcodeValues": [], "barcodeFormats": [], "errorMessage": "User cancelled scanning"])
         }
