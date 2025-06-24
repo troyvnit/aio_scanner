@@ -1,6 +1,6 @@
 name: aio_scanner
 description: A powerful cross-platform document and barcode scanning package for Flutter.
-version: 1.0.2
+version: 1.0.3
 repository: https://github.com/troyvnit/aio_scanner
 homepage: https://github.com/troyvnit/aio_scanner
 issue_tracker: https://github.com/troyvnit/aio_scanner/issues

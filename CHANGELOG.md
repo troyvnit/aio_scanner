@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.3 - 2025-06-24
+
+- **FIX**: Resolve conflicting FileOutputStream import in Android Kotlin code ([#1](https://github.com/troyvnit/aio_scanner/issues/1))
+- **FIX**: Remove duplicate import statement causing compilation errors ([#2](https://github.com/troyvnit/aio_scanner/issues/2))
+
 ## 1.0.2 - 2025-06-01
 
 - **FEAT**: Result now should be `ScanFile` class with `filePath` and `thumbnailPath`

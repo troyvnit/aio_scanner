@@ -57,7 +57,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  aio_scanner: ^1.0.2
+  aio_scanner: ^1.0.3
 ```
 
 ### iOS Setup
